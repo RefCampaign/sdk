@@ -1,0 +1,25 @@
+# Source files (on publie seulement dist/)
+src/
+*.test.ts
+*.spec.ts
+__tests__/
+
+# Configuration files
+tsconfig.json
+vitest.config.ts
+rollup.config.js
+.eslintrc*
+.prettierrc*
+
+# Development files
+node_modules/
+coverage/
+.vitest/
+*.log
+
+# Git files
+.git
+.gitignore
+
+# Documentation de développement
+CONTRIBUTING.md

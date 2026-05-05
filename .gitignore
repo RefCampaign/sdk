@@ -1,0 +1,39 @@
+# Dependencies
+node_modules/
+
+# Build outputs
+dist/
+*.tsbuildinfo
+
+# Testing
+coverage/
+.vitest/
+*.lcov
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Turbo
+.turbo/
+
+# Temporary files
+*.tmp
+.cache/
