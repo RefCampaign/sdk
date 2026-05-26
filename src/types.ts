@@ -26,7 +26,7 @@ export interface ConversionData {
   /** Currency code (ISO 4217) */
   currency: string
   /** Additional metadata */
-  metadata?: Record<string, any>
+  metadata?: Record<string, unknown>
 }
 
 /**

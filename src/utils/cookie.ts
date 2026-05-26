@@ -61,25 +61,43 @@ export function areCookiesSupported(): boolean {
 }
 
 /**
- * Get the appropriate domain for setting cookies
- * Automatically detects if we should use a parent domain
+ * Get the appropriate domain for setting cookies — picks a value that lets
+ * the cookie cross subdomains. The session must survive the navigation from
+ * the merchant's marketing site (e.g. `acme.com`) to their app subdomain
+ * (e.g. `app.acme.com`) at signup time, otherwise attribution dies on the
+ * domain hop.
+ *
+ * Behavior :
+ *   - localhost / raw IP                       → ''         (host-only, dev mode)
+ *   - apex 2-part domain (e.g. acme.com)       → '.acme.com'  (shared with subdomains)
+ *   - subdomain (e.g. www.acme.com / app.acme.com) → '.acme.com' (parent)
+ *
+ * Known limitation : ccTLDs with multi-level effective TLDs (e.g. `.co.uk`,
+ * `.com.br`) on a 3-part hostname will compute `.co.uk` — which the browser
+ * rejects because it's in the Public Suffix List. The cookie just doesn't
+ * persist in that case ; attribution falls back to URL-param session reuse
+ * on the next page load. Properly handling PSL would require shipping a
+ * 100KB+ list — deferred until a merchant actually hits it.
  */
-function getCookieDomain(): string {
-  if (typeof window === 'undefined') return ''
-
-  const hostname = window.location.hostname
+export function getCookieDomain(hostname?: string): string {
+  const host = hostname ?? (typeof window !== 'undefined' ? window.location.hostname : '')
+  if (!host) return ''
 
   // Don't set domain for localhost or IP addresses
-  if (hostname === 'localhost' || /^\d+\.\d+\.\d+\.\d+$/.test(hostname)) {
+  if (host === 'localhost' || /^\d+\.\d+\.\d+\.\d+$/.test(host)) {
     return ''
   }
 
-  // For subdomains, try to use parent domain
-  const parts = hostname.split('.')
+  const parts = host.split('.')
+  // Apex (acme.com): set `.acme.com` so app.acme.com can read the cookie
+  // after the user navigates from the marketing site to the platform.
+  if (parts.length === 2) {
+    return `.${host}`
+  }
+  // Subdomain (www.acme.com, app.acme.com): set the parent two parts.
   if (parts.length > 2) {
     return `.${parts.slice(-2).join('.')}`
   }
-
   return ''
 }
 

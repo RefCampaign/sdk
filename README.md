@@ -12,13 +12,59 @@ Track affiliate conversions seamlessly with automatic session ID capture and Str
 
 ## Installation
 
+Three install paths. Pick the one that matches your stack — all three end up with the same browser behavior on the visitor's side.
+
+### Path 1 — CDN script tag (recommended for no-code, simple sites)
+
+One line in your `<head>`. Works for HTML, Webflow, Framer, WordPress, Wix, and any platform that lets you paste custom code.
+
+```html
+<script src="https://sdk.refcampaign.com/v1.js" async></script>
+```
+
+The script self-bootstraps : it captures the session ID from the URL/cookie/localStorage on every page load and exposes `window.RefCampaignBrowser` for advanced calls (e.g. `RefCampaignBrowser.identify(email)` after login).
+
+> **Server-side conversion attribution still requires Path 2** (npm `RefCampaignServer` in your backend) for Stripe metadata injection. The CDN script alone tracks clicks; pairing it with the server SDK closes the conversion loop.
+
+### Path 2 — CDN tag + npm server SDK (recommended for SaaS)
+
+Path 1's `<script>` tag in your `<head>` for the browser side, plus :
+
 ```bash
 pnpm add @refcampaign/sdk
-# or
-npm install @refcampaign/sdk
-# or
-yarn add @refcampaign/sdk
+# or: npm install @refcampaign/sdk
+# or: yarn add @refcampaign/sdk
 ```
+
+```ts
+// In your Stripe checkout creation flow
+import { RefCampaignServer } from '@refcampaign/sdk'
+const rc = new RefCampaignServer(process.env.REFCAMPAIGN_SECRET_KEY)
+// → use rc.getStripeMetadata(sessionId) when creating Stripe sessions
+```
+
+This is the canonical SaaS setup : the merchant's frontend uses the CDN tag for zero-config tracking ; the backend uses the npm package to inject `refcampaign_session` into Stripe metadata so conversions reconcile to commissions.
+
+### Path 3 — Full npm (TypeScript, bundler-integrated)
+
+```bash
+pnpm add @refcampaign/sdk
+```
+
+```ts
+// Browser side (e.g. Next.js client component, Vue main.ts, Vite entry)
+import { RefCampaignBrowser } from '@refcampaign/sdk'
+RefCampaignBrowser.captureSession()
+
+// Server side
+import { RefCampaignServer } from '@refcampaign/sdk'
+```
+
+Path 3 gets you full TypeScript types, tree-shaking, and bundler-integrated builds. Pick this if you're already on a bundler and want everything in your dependency graph.
+
+### Pick ONE for the browser side
+
+Don't mix CDN (Path 1/2) and npm `RefCampaignBrowser` import (Path 3) — both share the same cookie and localStorage keys, so it works, but you double the network calls and the SDK will warn to your console. **Server side**, the npm `RefCampaignServer` is required regardless of which browser path you pick.
 
 ## Quick Start
 

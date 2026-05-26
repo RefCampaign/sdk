@@ -65,6 +65,10 @@ describe('RefCampaignBrowser', () => {
     let fetchMock: ReturnType<typeof vi.fn>
 
     beforeEach(() => {
+      // Pre-set the install-ping debounce so configure() below does not
+      // fire an extra /api/sdk/installed request that would pollute the
+      // fetchMock assertions in these tests.
+      window.localStorage.setItem('_rc_installed_at', String(Date.now()))
       fetchMock = vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve({ ok: true }) })
       vi.stubGlobal('fetch', fetchMock)
       // Reset apiBase between tests via the public configure() so we don't
@@ -123,6 +127,9 @@ describe('RefCampaignBrowser', () => {
 
   describe('configure', () => {
     it('strips trailing slashes from the apiBase', async () => {
+      // Suppress install-ping debounce so configure() below does not fire
+      // an extra request before the identify() call we are asserting on.
+      window.localStorage.setItem('_rc_installed_at', String(Date.now()))
       const fetchMock = vi.fn().mockResolvedValue({ ok: true })
       vi.stubGlobal('fetch', fetchMock)
       RefCampaignBrowser.configure({ apiBase: 'https://app.staging.example///' })
@@ -130,6 +137,23 @@ describe('RefCampaignBrowser', () => {
 
       await RefCampaignBrowser.identify('a@b.com')
       expect(fetchMock.mock.calls[0][0]).toBe('https://app.staging.example/api/track/identify')
+    })
+
+    it('fires an install-ping to <apiBase>/api/sdk/installed', async () => {
+      // localStorage was cleared by the outer beforeEach, so the install-ping
+      // debounce key (_rc_installed_at) is absent and sendInstallPing() will
+      // fire on the configure() call below.
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValue(new Response(null, { status: 204 }))
+      vi.stubGlobal('fetch', fetchMock)
+
+      RefCampaignBrowser.configure({ apiBase: 'https://app.staging.example' })
+
+      expect(fetchMock).toHaveBeenCalledWith(
+        'https://app.staging.example/api/sdk/installed',
+        expect.objectContaining({ method: 'POST' }),
+      )
     })
   })
 })

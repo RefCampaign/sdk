@@ -23,6 +23,7 @@ import {
   syncSessionStorage,
   cleanExpiredSessions,
 } from './utils/storage'
+import { sendInstallPing } from './install-ping'
 
 const DEFAULT_API_BASE = 'https://app.refcampaign.com'
 
@@ -55,6 +56,9 @@ class RefCampaignBrowserClass {
   configure(options: { apiBase?: string }): void {
     if (options.apiBase) {
       this.apiBase = options.apiBase.replace(/\/+$/, '')
+    }
+    if (typeof window !== 'undefined') {
+      sendInstallPing(this.apiBase)
     }
   }
 
@@ -280,3 +284,28 @@ class RefCampaignBrowserClass {
 
 // Export singleton instance
 export const RefCampaignBrowser = new RefCampaignBrowserClass()
+
+// Mirror guard with the IIFE auto-init: if the CDN snippet has already
+// loaded (`window.__refcampaignLoaded === true`), the merchant is mixing
+// CDN and npm-browser usage. Both paths share the same cookie and
+// localStorage keys, so it works, but they double the network calls and
+// confuse debugging. Surface a console warning during dev so the merchant
+// can pick one path. Silent in non-browser contexts (SSR, Node server).
+if (typeof window !== 'undefined') {
+  const w = window as Window & { __refcampaignLoaded?: boolean }
+  if (w.__refcampaignLoaded) {
+    console.warn(
+      '[RefCampaign] SDK loaded via both CDN and npm browser import. ' +
+        'Pick one path (browser side) — server-side npm import is unaffected. ' +
+        'See https://github.com/RefCampaign/sdk for the install paths.',
+    )
+  } else {
+    // Module-level ping: covers npm consumers who call identify() without
+    // configure(). Hardcoded to DEFAULT_API_BASE — this fires before any
+    // configure() call (configure() has its own ping site), so the apiBase
+    // override would not yet be applied. Idempotent via the install-ping
+    // localStorage debounce, so a subsequent configure() call won't
+    // double-ping within 24h.
+    sendInstallPing(DEFAULT_API_BASE)
+  }
+}

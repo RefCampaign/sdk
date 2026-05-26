@@ -1,6 +1,6 @@
 {
   "name": "@refcampaign/sdk",
-  "version": "1.1.0",
+  "version": "1.5.0",
   "description": "Official JavaScript SDK for RefCampaign - Track affiliate conversions with ease",
   "type": "module",
   "private": false,
@@ -15,14 +15,16 @@
     }
   },
   "scripts": {
-    "build": "rollup -c",
+    "build": "rollup -c && rollup -c rollup.config.iife.js && node scripts/check-iife-bundle-size.mjs",
+    "build:npm": "rollup -c",
+    "build:cdn": "rollup -c rollup.config.iife.js && node scripts/check-iife-bundle-size.mjs",
     "dev": "rollup -c --watch",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "type-check": "tsc --noEmit",
     "prepublishOnly": "pnpm build && pnpm test && pnpm type-check",
-    "release": "npm publish --access public"
+    "release": "npm publish --access public && git push origin sdk-v$npm_package_version"
   },
   "keywords": [
     "refcampaign",
@@ -43,6 +45,7 @@
   },
   "devDependencies": {
     "@rollup/plugin-node-resolve": "^15.2.3",
+    "@rollup/plugin-terser": "^1.0.0",
     "@rollup/plugin-typescript": "^12.1.2",
     "@types/node": "^24.9.1",
     "@vitest/coverage-v8": "^2.1.8",
