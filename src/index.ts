@@ -27,6 +27,7 @@ export { RefCampaignServer } from './server'
 export type {
   RefCampaignServerConfig,
   ConversionData,
+  ConversionType,
   TrackConversionResponse,
   SessionCaptureResult,
   SessionIdSource,

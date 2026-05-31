@@ -44,21 +44,31 @@ async function sha256Hex(input: string): Promise<string> {
 
 class RefCampaignBrowserClass {
   private apiBase: string = DEFAULT_API_BASE
+  private siteToken: string | undefined
 
   /**
-   * Override the RefCampaign API base URL. Default points to production
-   * (`https://app.refcampaign.com`). Used for staging or self-hosted
-   * deployments. Trailing slashes are stripped.
+   * Configure the SDK.
+   *
+   * - `apiBase` — override the RefCampaign API base URL. Default points to
+   *   production (`https://app.refcampaign.com`). Used for staging or
+   *   self-hosted deployments. Trailing slashes are stripped.
+   * - `siteToken` — the per-account install token (`rcst_*`) shown on the SDK
+   *   setup page. Required for npm installs to verify the install; the platform
+   *   resolves the merchant by this token. CDN (`v1.js?s=...`) installs carry
+   *   it via the script URL instead and don't need this.
    *
    * @example
-   * RefCampaignBrowser.configure({ apiBase: 'https://app.test.refcampaign.com' })
+   * RefCampaignBrowser.configure({ siteToken: 'rcst_...' })
    */
-  configure(options: { apiBase?: string }): void {
+  configure(options: { apiBase?: string; siteToken?: string }): void {
     if (options.apiBase) {
       this.apiBase = options.apiBase.replace(/\/+$/, '')
     }
+    if (options.siteToken) {
+      this.siteToken = options.siteToken
+    }
     if (typeof window !== 'undefined') {
-      sendInstallPing(this.apiBase)
+      sendInstallPing(this.apiBase, this.siteToken)
     }
   }
 

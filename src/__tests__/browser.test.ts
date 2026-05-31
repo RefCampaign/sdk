@@ -65,10 +65,10 @@ describe('RefCampaignBrowser', () => {
     let fetchMock: ReturnType<typeof vi.fn>
 
     beforeEach(() => {
-      // Pre-set the install-ping debounce so configure() below does not
-      // fire an extra /api/sdk/installed request that would pollute the
-      // fetchMock assertions in these tests.
-      window.localStorage.setItem('_rc_installed_at', String(Date.now()))
+      // Pre-set the install-ping debounce (scoped per apiBase) so configure()
+      // below does not fire an extra /api/sdk/installed request that would
+      // pollute the fetchMock assertions in these tests.
+      window.localStorage.setItem('_rc_installed_at:https://app.test.example', String(Date.now()))
       fetchMock = vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve({ ok: true }) })
       vi.stubGlobal('fetch', fetchMock)
       // Reset apiBase between tests via the public configure() so we don't
@@ -127,9 +127,10 @@ describe('RefCampaignBrowser', () => {
 
   describe('configure', () => {
     it('strips trailing slashes from the apiBase', async () => {
-      // Suppress install-ping debounce so configure() below does not fire
-      // an extra request before the identify() call we are asserting on.
-      window.localStorage.setItem('_rc_installed_at', String(Date.now()))
+      // Suppress install-ping debounce (scoped per apiBase, trailing slash
+      // normalized) so configure() below does not fire an extra request before
+      // the identify() call we are asserting on.
+      window.localStorage.setItem('_rc_installed_at:https://app.staging.example', String(Date.now()))
       const fetchMock = vi.fn().mockResolvedValue({ ok: true })
       vi.stubGlobal('fetch', fetchMock)
       RefCampaignBrowser.configure({ apiBase: 'https://app.staging.example///' })
@@ -153,6 +154,26 @@ describe('RefCampaignBrowser', () => {
       expect(fetchMock).toHaveBeenCalledWith(
         'https://app.staging.example/api/sdk/installed',
         expect.objectContaining({ method: 'POST' }),
+      )
+    })
+
+    it('forwards the siteToken to the install-ping body', () => {
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValue(new Response(null, { status: 204 }))
+      vi.stubGlobal('fetch', fetchMock)
+
+      RefCampaignBrowser.configure({
+        apiBase: 'https://app.staging.example',
+        siteToken: 'rcst_abc',
+      })
+
+      expect(fetchMock).toHaveBeenCalledWith(
+        'https://app.staging.example/api/sdk/installed',
+        expect.objectContaining({
+          method: 'POST',
+          body: JSON.stringify({ siteToken: 'rcst_abc' }),
+        }),
       )
     })
   })

@@ -10,6 +10,25 @@ Official JavaScript SDK for RefCampaign affiliate tracking.
 
 Track affiliate conversions seamlessly with automatic session ID capture and Stripe metadata injection.
 
+## Migrating to v2
+
+`2.0.0` makes `orderId` **required** on `RefCampaignServer.trackConversion()` — it
+is used as the server-side idempotence key, so retries and duplicate webhooks never
+double-count a conversion. If you call `trackConversion`, add a stable `orderId`:
+
+```diff
+ await rc.trackConversion({
++  orderId: order.id,
+   amount: 4999,
+   currency: 'eur',
+   sessionId,
+ })
+```
+
+Calls without `orderId` now throw at runtime. The browser SDK and Stripe-metadata
+flow (`getStripeMetadata`) are unchanged. See the [CHANGELOG](./CHANGELOG.md) for the
+full list (automatic retries, `onError`, `conversionType`, `configure({ siteToken })`).
+
 ## Installation
 
 Three install paths. Pick the one that matches your stack — all three end up with the same browser behavior on the visitor's side.
@@ -338,9 +357,10 @@ import { RefCampaignServer } from '@refcampaign/sdk'
 
 const rc = new RefCampaignServer('sk_prod_xyz789')
 
-async function handlePayPalPayment(sessionId: string, amount: number) {
+async function handlePayPalPayment(orderId: string, sessionId: string, amount: number) {
   // Track conversion manually
   const result = await rc.trackConversion({
+    orderId,    // Required — merchant order ID, used as idempotence key
     sessionId,
     amount: 4999, // Amount in cents (€49.99)
     currency: 'EUR',
@@ -416,7 +436,7 @@ RefCampaignBrowser.identify(currentUser.email)
 
 ### Common Error Scenarios
 
-#### 1. Invalid Session ID
+#### 1. Missing orderId or Invalid Session ID
 
 ```typescript
 import { RefCampaignServer } from '@refcampaign/sdk'
@@ -425,13 +445,14 @@ const rc = new RefCampaignServer(process.env.REFCAMPAIGN_SECRET_KEY!)
 
 try {
   const result = await rc.trackConversion({
-    sessionId: 'invalid', // Too short (< 10 chars)
+    orderId: 'ORD-123', // Required — idempotence key
+    sessionId: 'invalid', // Too short (< 8 chars)
     amount: 4999,
     currency: 'EUR'
   })
 } catch (error) {
   console.error('Conversion tracking failed:', error.message)
-  // Error: "sessionId must be at least 10 characters long"
+  // Error: "[RefCampaign] Invalid sessionId format"
 }
 ```
 
@@ -467,10 +488,13 @@ export async function POST(req: NextRequest) {
 
 #### 3. Manual Conversion API Failure
 
+The SDK retries 5xx errors automatically (3 attempts by default with exponential backoff). For permanent failures, `result.success` is `false` with an `error` string.
+
 ```typescript
-async function trackPayPalPayment(sessionId: string, amount: number) {
+async function trackPayPalPayment(orderId: string, sessionId: string, amount: number) {
   try {
     const result = await rc.trackConversion({
+      orderId,   // Required — merchant order ID, idempotence key
       sessionId,
       amount,
       currency: 'EUR',
@@ -478,19 +502,14 @@ async function trackPayPalPayment(sessionId: string, amount: number) {
     })
 
     if (result.success) {
-      console.log('✅ Conversion tracked:', result.conversionId)
+      console.log('Conversion tracked:', result.conversionId)
     } else {
-      console.error('❌ Tracking failed:', result.error)
+      console.error('Tracking failed:', result.error)
       // Handle business logic for failed tracking
     }
   } catch (error) {
-    console.error('🔥 API Error:', error)
-
-    // Retry logic (example)
-    setTimeout(() => {
-      console.log('Retrying conversion tracking...')
-      trackPayPalPayment(sessionId, amount)
-    }, 5000)
+    // Only thrown for validation errors (missing orderId, invalid amount, etc.)
+    console.error('Validation error:', error)
   }
 }
 ```
@@ -518,7 +537,7 @@ if (!subscription.metadata?.refcampaign_session) {
 ### Error Handling Best Practices
 
 1. **Always validate session ID before API calls**
-2. **Implement retry logic for temporary API failures**
+2. **The SDK retries transient failures automatically** (429/5xx/network, exponential backoff) — tune via `retry`, and wire `onError` to your monitoring for sends that still fail
 3. **Log errors with context for debugging**
 4. **Gracefully degrade when tracking fails** (don't break user flow)
 5. **Monitor webhook failures** (RefCampaign retries 5x automatically)
@@ -586,8 +605,17 @@ Server-side API for Stripe metadata injection and conversion tracking.
 
 ```typescript
 new RefCampaignServer(secretKey: string, config?: {
-  apiUrl?: string // Default: 'https://app.refcampaign.com'
-  debug?: boolean // Default: false
+  apiUrl?: string      // Default: 'https://app.refcampaign.com'
+  debug?: boolean      // Default: false
+  timeoutMs?: number   // Per-request timeout in ms (default: 10000)
+  retry?: {
+    attempts?: number    // Total attempts including first (default: 3)
+    baseDelayMs?: number // Base backoff delay in ms (default: 300)
+  }
+  // Invoked when a conversion send ultimately fails (non-retryable error or
+  // exhausted retries). Wire your own monitoring here. A throwing callback is
+  // caught and never breaks trackConversion.
+  onError?: (error: Error, context: { orderId: string; attempts: number }) => void
 })
 ```
 
@@ -604,13 +632,15 @@ const metadata = rc.getStripeMetadata('abc123')
 
 ##### `trackConversion(data: ConversionData): Promise<TrackConversionResponse>`
 
-Track conversion manually (for non-Stripe payments).
+Track conversion manually (for non-Stripe payments). `orderId` is required and acts as the idempotence key (`externalId`), preventing duplicate conversions for the same order. Either `sessionId` or `customerEmailHash` must be provided for attribution.
 
 ```typescript
 const result = await rc.trackConversion({
-  sessionId: 'abc123',
-  amount: 4999, // cents
+  orderId: 'ORD-123',  // Required — merchant order ID, idempotence key
+  sessionId: 'abc123', // Required (or customerEmailHash for cross-device attribution)
+  amount: 4999,        // cents
   currency: 'EUR',
+  conversionType: 'SALE', // optional, defaults to 'SALE'
   metadata: { plan: 'pro' } // optional
 })
 ```
@@ -621,10 +651,18 @@ const result = await rc.trackConversion({
 
 ```typescript
 
+type ConversionType = 'SALE' | 'LEAD' | 'TRIAL' | 'CUSTOM'
+
 interface RefCampaignServerConfig {
-  secretKey: string // Starts with 'sk_'
+  secretKey: string   // Starts with 'sk_'
   apiUrl?: string
   debug?: boolean
+  timeoutMs?: number  // Per-request timeout in ms (default: 10000)
+  retry?: {
+    attempts?: number    // Total attempts including the first (default: 3)
+    baseDelayMs?: number // Base backoff delay in ms (default: 300)
+  }
+  onError?: (error: Error, context: { orderId: string; attempts: number }) => void
 }
 
 interface SessionCaptureResult {
@@ -633,10 +671,13 @@ interface SessionCaptureResult {
 }
 
 interface ConversionData {
-  sessionId: string // Required - minimum 10 characters, alphanumeric + dash/underscore
-  amount: number // Amount in cents (integer)
-  currency: string // ISO 4217 code (e.g., 'EUR', 'USD')
-  metadata?: Record<string, any>
+  orderId: string           // Required — merchant order ID, idempotence key
+  amount: number            // Amount in cents (integer)
+  currency: string          // ISO 4217 code (e.g., 'EUR', 'USD')
+  conversionType?: ConversionType  // Default: 'SALE'
+  sessionId?: string        // For attribution (preferred)
+  customerEmailHash?: string // SHA-256 hex of customer email, fallback attribution
+  metadata?: Record<string, unknown>
 }
 
 interface StripeMetadata {

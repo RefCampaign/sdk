@@ -5,6 +5,65 @@ All notable changes to the RefCampaign SDK will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.0] - 2026-05-31
+
+This release reworks server-side conversion tracking. The previous `1.5.1` and
+`1.6.0` entries were never published to npm — their changes are folded into this
+`2.0.0` release.
+
+### BREAKING
+
+- **`RefCampaignServer.trackConversion()` now requires an `orderId`** and posts to
+  the `/api/v1/conversions/postback` endpoint. `orderId` is the merchant order ID,
+  used as the server-side idempotence key (mapped to `externalId`), so retries and
+  duplicate webhooks never double-count a conversion. Calls that previously passed
+  only `{ amount, currency, sessionId }` now throw
+  `"[RefCampaign] orderId is required and used as the idempotence key"` at runtime.
+
+  **Migration:** add `orderId` (a stable, unique id for the order/transaction) to
+  every `trackConversion(...)` call:
+
+  ```diff
+   await rc.trackConversion({
+  +  orderId: order.id,
+     amount: 4999,
+     currency: 'eur',
+     sessionId,
+   })
+  ```
+
+### Added
+
+- **Automatic retries on transient failures** (HTTP 429 / 5xx / network) with
+  exponential backoff. Tune via `new RefCampaignServer(key, { retry: { attempts, baseDelayMs } })`
+  (defaults: 3 attempts, 300 ms base delay).
+- **`onError` callback** — `new RefCampaignServer(key, { onError: (error, { orderId, attempts }) => ... })`
+  fires when a conversion send ultimately fails after all retries, so you can wire
+  it to your monitoring. A throwing `onError` never breaks `trackConversion`.
+- **`conversionType`** on `ConversionData` (`'SALE' | 'LEAD' | 'TRIAL' | 'CUSTOM'`,
+  default `'SALE'`) and `customerEmailHash` as an explicit fallback-attribution field.
+- **`configure({ siteToken })`** (browser SDK) carries the per-account install token
+  (`rcst_*`) on the install ping (`POST /api/sdk/installed`), sent in a
+  CORS-safelisted `text/plain` body so no preflight is triggered. The platform
+  verifies SDK installs solely by this token (npm path) or by the CDN Worker
+  forwarding the `v1.js?s=<token>` URL — never by matching the page's domain. npm
+  consumers should pass `siteToken` (shown on the dashboard SDK setup page) to get
+  install verification. The debounce key is scoped per `(apiBase, token)` so a
+  tokenless ping never suppresses the token-carrying one.
+
+### Fixed
+
+- `trackConversion` now unwraps the API response envelope (`{ data: ... }`) so the
+  returned object is the conversion payload directly. Malformed-body and retry
+  paths are hardened.
+- Install-ping debounce is scoped per `apiBase` (key `_rc_installed_at:<apiBase>`)
+  instead of a single global key, so a `configure({ apiBase })` override
+  (staging / self-hosted) is no longer debounced away by the prod-default ping.
+
+### Changed
+
+- The server SDK no longer logs the secret-key prefix.
+
 ## [1.5.0] - 2026-05-26
 
 ### Added

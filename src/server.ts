@@ -45,12 +45,16 @@ export class RefCampaignServer {
       secretKey,
       apiUrl: this.apiUrl,
       debug: config?.debug || false,
+      timeoutMs: config?.timeoutMs,
+      retry: config?.retry,
+      onError: config?.onError,
     }
 
     if (this.config.debug) {
       console.log('[RefCampaign] Server SDK initialized', {
         apiUrl: this.apiUrl,
-        secretKey: secretKey.substring(0, 10) + '...',
+        // Never log any part of the secret key, even in debug.
+        secretKey: '***',
       })
     }
   }
@@ -107,12 +111,13 @@ export class RefCampaignServer {
    * Use this when you have conversions that don't go through Stripe,
    * or when you want to track additional conversion events.
    *
-   * @param data - Conversion data (amount, currency, sessionId)
+   * @param data - Conversion data
    * @returns Promise with tracking result
-   * @throws Error if validation fails or API request fails
+   * @throws Error if validation fails
    *
    * @example
    * const result = await rc.trackConversion({
+   *   orderId: 'ORD-123', // Required — used as idempotence key
    *   sessionId: 'abc123',
    *   amount: 4999, // €49.99
    *   currency: 'EUR',
@@ -120,71 +125,102 @@ export class RefCampaignServer {
    * })
    */
   async trackConversion(data: ConversionData): Promise<TrackConversionResponse> {
-    // Validate data
+    if (!data.orderId || typeof data.orderId !== 'string') {
+      throw new Error('[RefCampaign] orderId is required and used as the idempotence key')
+    }
     if (!validateAmount(data.amount)) {
       throw new Error('[RefCampaign] Invalid amount: must be a positive integer in cents')
     }
-
     if (!validateCurrency(data.currency)) {
       throw new Error('[RefCampaign] Invalid currency: must be a 3-letter ISO 4217 code')
     }
-
     if (data.sessionId && !validateSessionId(data.sessionId)) {
       throw new Error('[RefCampaign] Invalid sessionId format')
     }
-
-    if (!data.sessionId) {
-      throw new Error('[RefCampaign] sessionId is required for manual conversion tracking')
+    if (!data.sessionId && !data.customerEmailHash) {
+      throw new Error('[RefCampaign] sessionId or customerEmailHash is required for attribution')
     }
 
-    // Make API request
-    const url = `${this.apiUrl}/api/conversions/track`
+    const url = `${this.apiUrl}/api/v1/conversions/postback`
+    const payload = {
+      externalId: data.orderId,
+      amount: data.amount,
+      currency: data.currency,
+      conversionType: data.conversionType ?? 'SALE',
+      ...(data.sessionId ? { sessionId: data.sessionId } : {}),
+      ...(data.customerEmailHash ? { customerEmailHash: data.customerEmailHash } : {}),
+      ...(data.metadata ? { metadata: data.metadata } : {}),
+    }
 
-    try {
-      if (this.config.debug) {
-        console.log('[RefCampaign] Tracking conversion:', { url, data })
+    // Guard against a misconfigured attempts value of 0 or negative, which
+    // would silently skip the call entirely.
+    const attempts = Math.max(1, this.config.retry?.attempts ?? 3)
+    const baseDelayMs = this.config.retry?.baseDelayMs ?? 300
+    const timeoutMs = this.config.timeoutMs ?? 10000
+
+    let lastError = 'Unknown error occurred'
+    const reportFailure = (failedAttempts: number) => {
+      try {
+        this.config.onError?.(new Error(lastError), {
+          orderId: data.orderId,
+          attempts: failedAttempts,
+        })
+      } catch {
+        // A throwing onError callback must never break trackConversion.
       }
+    }
 
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${this.config.secretKey}`,
-        },
-        body: JSON.stringify(data),
-      })
+    for (let attempt = 1; attempt <= attempts; attempt++) {
+      const controller = new AbortController()
+      const timer = setTimeout(() => controller.abort(), timeoutMs)
+      try {
+        const response = await fetch(url, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${this.config.secretKey}`,
+          },
+          body: JSON.stringify(payload),
+          signal: controller.signal,
+        })
 
-      if (!response.ok) {
-        const errorText = await response.text()
-        throw new Error(
-          `API request failed: ${response.status} ${response.statusText} - ${errorText}`
-        )
-      }
-
-      const result = await response.json()
-
-      if (this.config.debug) {
-        console.log('[RefCampaign] Conversion tracked successfully:', result)
-      }
-
-      return result
-    } catch (error) {
-      if (this.config.debug) {
-        console.error('[RefCampaign] Failed to track conversion:', error)
-      }
-
-      if (error instanceof Error) {
-        return {
-          success: false,
-          error: error.message,
+        if (response.ok) {
+          try {
+            const parsed: { data?: TrackConversionResponse } & TrackConversionResponse =
+              await response.json()
+            // The platform wraps every handler return in { success, data, meta }.
+            // Unwrap to the inner payload; fall back to the raw body defensively
+            // in case an environment doesn't apply the envelope.
+            return (parsed?.data ?? parsed) as TrackConversionResponse
+          } catch {
+            return { success: false, error: 'Malformed success response from API' }
+          }
         }
+
+        const retryable = response.status === 429 || response.status >= 500
+        lastError = `API request failed: ${response.status} ${response.statusText} - ${await response.text()}`
+        if (!retryable) {
+          reportFailure(attempt)
+          return { success: false, error: lastError }
+        }
+      } catch (error) {
+        lastError = error instanceof Error ? error.message : 'Unknown error occurred'
+      } finally {
+        clearTimeout(timer)
       }
 
-      return {
-        success: false,
-        error: 'Unknown error occurred',
+      if (attempt < attempts) {
+        const backoff = baseDelayMs * 2 ** (attempt - 1)
+        const jitter = Math.floor(Math.random() * baseDelayMs)
+        await new Promise((resolve) => setTimeout(resolve, backoff + jitter))
       }
     }
+
+    if (this.config.debug) {
+      console.error('[RefCampaign] Failed to track conversion after retries:', lastError)
+    }
+    reportFailure(attempts)
+    return { success: false, error: lastError }
   }
 
   /**
