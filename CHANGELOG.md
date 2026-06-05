@@ -5,6 +5,27 @@ All notable changes to the RefCampaign SDK will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.0] - 2026-06-05
+
+### Added
+
+- **Browser session-capture verification.** When a dashboard-generated test URL
+  carries an `rctest` parameter, the browser SDK fires a best-effort ping to
+  `/api/sdk/session-captured` so the dashboard can confirm the SDK captured the
+  session. The ping carries only public setup data (`siteToken`, `testId`,
+  `sessionId`) and never affects attribution. The `rctest` parameter is stripped
+  from the URL alongside `rcsid` / `_rcid`.
+- **CDN script configuration via query parameters.** The auto-init bundle now
+  reads `apiBase` and a `s` site token (`rcst_…`) from its own `<script src>`
+  query string, so dashboard/staging test installs target the same API that
+  generated the test URL.
+
+### Fixed
+
+- Route the browser capture ping to the configured `apiBase` instead of the
+  hardcoded production URL, so staging and self-hosted installs verify against
+  the correct backend.
+
 ## [2.0.0] - 2026-05-31
 
 This release reworks server-side conversion tracking. The previous `1.5.1` and

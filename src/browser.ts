@@ -12,6 +12,7 @@ import type {
 import { validateSessionId } from './utils/validation'
 import {
   getSessionIdFromCookie,
+  getSessionCaptureTestIdFromUrl,
   getSessionIdFromUrl,
   trySetSessionCookie,
   areCookiesSupported,
@@ -24,6 +25,7 @@ import {
   cleanExpiredSessions,
 } from './utils/storage'
 import { sendInstallPing } from './install-ping'
+import { sendSessionCapturePing } from './session-capture-ping'
 
 const DEFAULT_API_BASE = 'https://app.refcampaign.com'
 
@@ -141,6 +143,7 @@ class RefCampaignBrowserClass {
     // Priority 1: Check URL parameter (rcsid or _rcid)
     const urlSessionId = getSessionIdFromUrl()
     if (urlSessionId && validateSessionId(urlSessionId)) {
+      const captureTestId = getSessionCaptureTestIdFromUrl()
       result.sessionId = urlSessionId
       result.source = 'url'
 
@@ -150,16 +153,27 @@ class RefCampaignBrowserClass {
       // Always also set localStorage as backup
       trySetSessionStorage(urlSessionId)
 
+      if (captureTestId && this.siteToken) {
+        sendSessionCapturePing(this.apiBase, {
+          siteToken: this.siteToken,
+          testId: captureTestId,
+          sessionId: urlSessionId,
+          source: 'url',
+        })
+      }
+
       // Clean URL parameter to avoid pollution
       if (typeof window !== 'undefined' && window.history && window.history.replaceState) {
         try {
           const url = new URL(window.location.href)
           const hasRcsid = url.searchParams.has('rcsid')
           const hasRcid = url.searchParams.has('_rcid')
+          const hasRctest = url.searchParams.has('rctest')
 
-          if (hasRcsid || hasRcid) {
+          if (hasRcsid || hasRcid || hasRctest) {
             url.searchParams.delete('rcsid')
             url.searchParams.delete('_rcid')
+            url.searchParams.delete('rctest')
             window.history.replaceState({}, document.title, url.toString())
           }
         } catch (e) {

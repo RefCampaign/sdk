@@ -13,6 +13,8 @@ describe('RefCampaignBrowser', () => {
           .replace(/=.*/, '=;expires=' + new Date().toUTCString() + ';path=/')
       })
     }
+    window.history.pushState({}, '', '/')
+    vi.unstubAllGlobals()
   })
 
   describe('captureSession', () => {
@@ -32,6 +34,116 @@ describe('RefCampaignBrowser', () => {
 
       // Restore
       window.location = originalLocation
+    })
+
+    it('pings verification when URL contains rcsid + rctest and the SDK has a siteToken', async () => {
+      window.localStorage.setItem(
+        '_rc_installed_at:https://app.refcampaign.com',
+        String(Date.now()),
+      )
+      window.localStorage.setItem(
+        '_rc_installed_at:https://app.test.example:rcst_abc',
+        String(Date.now()),
+      )
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValue(new Response(null, { status: 204 }))
+      vi.stubGlobal('fetch', fetchMock)
+      vi.resetModules()
+      const { RefCampaignBrowser: FreshRefCampaignBrowser } = await import('../browser')
+      FreshRefCampaignBrowser.configure({
+        apiBase: 'https://app.test.example',
+        siteToken: 'rcst_abc',
+      })
+
+      window.history.pushState(
+        {},
+        '',
+        '/checkout?rcsid=sdkcap_sess_123456789&rctest=sdkcap_test_123456789',
+      )
+
+      const result = FreshRefCampaignBrowser.captureSession()
+
+      expect(result.sessionId).toBe('sdkcap_sess_123456789')
+      expect(result.source).toBe('url')
+      expect(fetchMock).toHaveBeenCalledWith(
+        'https://app.test.example/api/sdk/session-captured',
+        expect.objectContaining({
+          method: 'POST',
+          keepalive: true,
+          mode: 'cors',
+          credentials: 'omit',
+          headers: { 'Content-Type': 'text/plain' },
+          body: JSON.stringify({
+            siteToken: 'rcst_abc',
+            testId: 'sdkcap_test_123456789',
+            sessionId: 'sdkcap_sess_123456789',
+            source: 'url',
+          }),
+        }),
+      )
+      expect(window.location.search).toBe('')
+    })
+
+    it('does not ping verification when rctest is absent', async () => {
+      window.localStorage.setItem(
+        '_rc_installed_at:https://app.refcampaign.com',
+        String(Date.now()),
+      )
+      window.localStorage.setItem(
+        '_rc_installed_at:https://app.test.example:rcst_abc',
+        String(Date.now()),
+      )
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValue(new Response(null, { status: 204 }))
+      vi.stubGlobal('fetch', fetchMock)
+      vi.resetModules()
+      const { RefCampaignBrowser: FreshRefCampaignBrowser } = await import('../browser')
+      FreshRefCampaignBrowser.configure({
+        apiBase: 'https://app.test.example',
+        siteToken: 'rcst_abc',
+      })
+
+      window.history.pushState({}, '', '/checkout?rcsid=sdkcap_sess_123456789')
+
+      FreshRefCampaignBrowser.captureSession()
+
+      expect(fetchMock).not.toHaveBeenCalledWith(
+        'https://app.test.example/api/sdk/session-captured',
+        expect.anything(),
+      )
+    })
+
+    it('does not ping verification when the SDK has no siteToken', async () => {
+      window.localStorage.setItem(
+        '_rc_installed_at:https://app.refcampaign.com',
+        String(Date.now()),
+      )
+      window.localStorage.setItem(
+        '_rc_installed_at:https://app.test.example',
+        String(Date.now()),
+      )
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValue(new Response(null, { status: 204 }))
+      vi.stubGlobal('fetch', fetchMock)
+      vi.resetModules()
+      const { RefCampaignBrowser: FreshRefCampaignBrowser } = await import('../browser')
+      FreshRefCampaignBrowser.configure({ apiBase: 'https://app.test.example' })
+
+      window.history.pushState(
+        {},
+        '',
+        '/checkout?rcsid=sdkcap_sess_123456789&rctest=sdkcap_test_123456789',
+      )
+
+      FreshRefCampaignBrowser.captureSession()
+
+      expect(fetchMock).not.toHaveBeenCalledWith(
+        'https://app.test.example/api/sdk/session-captured',
+        expect.anything(),
+      )
     })
 
     it('should capture session from localStorage', () => {

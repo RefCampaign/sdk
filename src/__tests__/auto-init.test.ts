@@ -71,6 +71,45 @@ describe('auto-init (CDN bundle entry)', () => {
     expect(String(url)).toMatch(/\/api\/sdk\/installed$/)
   })
 
+  it('extracts siteToken from the CDN script query param and forwards it to install verification', async () => {
+    const script = document.createElement('script')
+    script.src = 'https://sdk.refcampaign.com/v1.js?s=rcst_auto_123456789'
+    document.head.appendChild(script)
+
+    await import('../auto-init')
+
+    expect(globalThis.fetch).toHaveBeenCalledTimes(1)
+    const [, init] = (globalThis.fetch as unknown as { mock: { calls: unknown[][] } }).mock.calls[0]
+    const requestInit = init as RequestInit
+    expect(requestInit.body).toBe(JSON.stringify({ siteToken: 'rcst_auto_123456789' }))
+  })
+
+  it('uses apiBase from the CDN script query before capturing a dashboard test session', async () => {
+    window.history.pushState(
+      {},
+      '',
+      '/checkout?rcsid=sdkcap_sess_123456789&rctest=sdkcap_test_123456789',
+    )
+    const script = document.createElement('script')
+    script.src =
+      'https://sdk.refcampaign.com/v1.js?s=rcst_auto_123456789&apiBase=https%3A%2F%2Fapp.test.example'
+    document.head.appendChild(script)
+
+    await import('../auto-init')
+
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      'https://app.test.example/api/sdk/session-captured',
+      expect.objectContaining({
+        body: JSON.stringify({
+          siteToken: 'rcst_auto_123456789',
+          testId: 'sdkcap_test_123456789',
+          sessionId: 'sdkcap_sess_123456789',
+          source: 'url',
+        }),
+      }),
+    )
+  })
+
   it('skips re-init when SDK is already loaded', async () => {
     const w = window as AugmentedWindow
     w.__refcampaignLoaded = true

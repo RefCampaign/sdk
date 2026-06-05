@@ -43,6 +43,16 @@ export function getSessionIdFromUrl(): string | null {
 }
 
 /**
+ * Get dashboard browser-capture test ID from URL query parameter (?rctest=xxx)
+ */
+export function getSessionCaptureTestIdFromUrl(): string | null {
+  if (typeof window === 'undefined') return null
+
+  const params = new URLSearchParams(window.location.search)
+  return params.get('rctest')
+}
+
+/**
  * Check if cookies are supported in the current environment
  */
 export function areCookiesSupported(): boolean {

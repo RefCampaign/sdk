@@ -25,10 +25,52 @@ import { RefCampaignBrowser } from './browser'
 import { sendInstallPing } from './install-ping'
 
 const DEFAULT_API_BASE = 'https://app.refcampaign.com'
+const API_BASE_PARAM = 'apiBase'
+const SITE_TOKEN_PARAM = 's'
+const SITE_TOKEN_PREFIX = 'rcst_'
 
 interface AugmentedWindow extends Window {
   __refcampaignLoaded?: boolean
   RefCampaignBrowser?: typeof RefCampaignBrowser
+}
+
+function siteTokenFromScriptSrc(src: string): string | undefined {
+  try {
+    const url = new URL(src, window.location.href)
+    const token = url.searchParams.get(SITE_TOKEN_PARAM)
+    return token?.startsWith(SITE_TOKEN_PREFIX) ? token : undefined
+  } catch {
+    return undefined
+  }
+}
+
+function apiBaseFromScriptSrc(src: string): string | undefined {
+  try {
+    const url = new URL(src, window.location.href)
+    const apiBase = url.searchParams.get(API_BASE_PARAM)
+    return apiBase ? apiBase.replace(/\/+$/, '') : undefined
+  } catch {
+    return undefined
+  }
+}
+
+function getCdnConfig(): { apiBase?: string; siteToken?: string } {
+  const currentScript =
+    document.currentScript instanceof HTMLScriptElement
+      ? document.currentScript
+      : null
+
+  const scripts = currentScript
+    ? [currentScript]
+    : Array.from(document.scripts).reverse()
+
+  for (const script of scripts) {
+    const siteToken = siteTokenFromScriptSrc(script.src)
+    const apiBase = apiBaseFromScriptSrc(script.src)
+    if (siteToken || apiBase) return { apiBase, siteToken }
+  }
+
+  return {}
 }
 
 if (typeof window !== 'undefined') {
@@ -37,12 +79,15 @@ if (typeof window !== 'undefined') {
   if (w.__refcampaignLoaded) {
     console.warn('[RefCampaign] SDK already loaded, skipping CDN auto-init')
   } else {
-    // Note: we DON'T call configure({ apiBase: ... }) — the SDK already
-    // defaults to https://app.refcampaign.com. Hardcoding the prod URL here
-    // would break staging consumers who override post-load via
-    // `window.RefCampaignBrowser.configure({ apiBase: ... })`.
+    // Read the CDN query before captureSession() so staging/self-hosted
+    // browser-capture tests ping the same API that generated the test URL.
+    const { apiBase, siteToken } = getCdnConfig()
+    if (siteToken || apiBase) {
+      RefCampaignBrowser.configure({ apiBase, siteToken })
+    } else {
+      sendInstallPing(DEFAULT_API_BASE)
+    }
     RefCampaignBrowser.captureSession()
-    sendInstallPing(DEFAULT_API_BASE)
     w.RefCampaignBrowser = RefCampaignBrowser
     w.__refcampaignLoaded = true
   }
