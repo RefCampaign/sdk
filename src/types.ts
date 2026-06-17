@@ -49,6 +49,8 @@ export interface ConversionData {
   conversionType?: ConversionType
   /** Session ID for attribution (preferred) */
   sessionId?: string
+  /** Affiliate tracking code for server-side code attribution */
+  affiliateCode?: string
   /** SHA-256 hex of the customer email, fallback attribution */
   customerEmailHash?: string
   /** Additional metadata */

@@ -104,15 +104,25 @@ class RefCampaignBrowserClass {
       return // Web Crypto unavailable (very old browsers); silently no-op.
     }
 
+    // Bound the request so an awaiting caller (the docstring shows identify()
+    // called from a login handler) is never frozen by a hung connection —
+    // `keepalive` does not impose a timeout. Mirrors the server SDK's abort
+    // pattern; on timeout/error we swallow, since identify is best-effort and
+    // must never disrupt the merchant's flow.
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), 3000)
     try {
       await fetch(`${this.apiBase}/api/track/identify`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ sessionId, emailHash }),
         keepalive: true,
+        signal: controller.signal,
       })
     } catch {
-      // Network errors are expected on flaky connections — swallow.
+      // Network errors / timeout are expected on flaky connections — swallow.
+    } finally {
+      clearTimeout(timer)
     }
   }
 

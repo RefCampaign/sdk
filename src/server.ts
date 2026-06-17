@@ -137,8 +137,8 @@ export class RefCampaignServer {
     if (data.sessionId && !validateSessionId(data.sessionId)) {
       throw new Error('[RefCampaign] Invalid sessionId format')
     }
-    if (!data.sessionId && !data.customerEmailHash) {
-      throw new Error('[RefCampaign] sessionId or customerEmailHash is required for attribution')
+    if (!data.affiliateCode && !data.sessionId && !data.customerEmailHash) {
+      throw new Error('[RefCampaign] affiliateCode, sessionId, or customerEmailHash is required for attribution')
     }
 
     const url = `${this.apiUrl}/api/v1/conversions/postback`
@@ -147,6 +147,7 @@ export class RefCampaignServer {
       amount: data.amount,
       currency: data.currency,
       conversionType: data.conversionType ?? 'SALE',
+      ...(data.affiliateCode ? { affiliateCode: data.affiliateCode } : {}),
       ...(data.sessionId ? { sessionId: data.sessionId } : {}),
       ...(data.customerEmailHash ? { customerEmailHash: data.customerEmailHash } : {}),
       ...(data.metadata ? { metadata: data.metadata } : {}),

@@ -1,6 +1,6 @@
 {
   "name": "@refcampaign/sdk",
-  "version": "2.1.0",
+  "version": "2.2.0",
   "description": "Official JavaScript SDK for RefCampaign - Track affiliate conversions with ease",
   "type": "module",
   "private": false,

@@ -47,6 +47,26 @@ describe('getCookieDomain', () => {
     })
   })
 
+  describe('multi-level public suffixes (ccTLDs)', () => {
+    it('returns the registrable domain for a subdomain on .co.uk', () => {
+      // `.co.uk` alone is a public suffix the browser rejects — must use 3 parts.
+      expect(getCookieDomain('shop.acme.co.uk')).toBe('.acme.co.uk')
+    })
+
+    it('returns .acme.co.uk for the registrable domain acme.co.uk itself', () => {
+      expect(getCookieDomain('acme.co.uk')).toBe('.acme.co.uk')
+    })
+
+    it('handles .com.br and .com.au', () => {
+      expect(getCookieDomain('app.acme.com.br')).toBe('.acme.com.br')
+      expect(getCookieDomain('www.acme.com.au')).toBe('.acme.com.au')
+    })
+
+    it('still returns the parent two parts for an ordinary .com subdomain', () => {
+      expect(getCookieDomain('shop.acme.com')).toBe('.acme.com')
+    })
+  })
+
   describe('non-attributable hosts', () => {
     it('returns empty string for localhost (dev mode)', () => {
       expect(getCookieDomain('localhost')).toBe('')

@@ -228,7 +228,7 @@ describe('RefCampaignServer', () => {
       ).rejects.toThrow(/Invalid currency/)
     })
 
-    it('should throw when neither sessionId nor customerEmailHash is provided', async () => {
+    it('should throw when no attribution identifier is provided', async () => {
       const rc = new RefCampaignServer('sk_test_abc123')
       await expect(
         rc.trackConversion({
@@ -236,7 +236,35 @@ describe('RefCampaignServer', () => {
           amount: 4999,
           currency: 'EUR',
         })
-      ).rejects.toThrow(/sessionId or customerEmailHash/)
+      ).rejects.toThrow(/affiliateCode, sessionId, or customerEmailHash/)
+    })
+
+    it('accepts affiliateCode as the only attribution identifier', async () => {
+      ;(global.fetch as ReturnType<typeof vi.fn>).mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: async () => ({ success: true, data: { success: true, conversionId: 'conv_code' }, meta: {} }),
+      })
+
+      const rc = new RefCampaignServer('sk_test_abc123')
+      const result = await rc.trackConversion({
+        orderId: 'ORD-CODE',
+        affiliateCode: 'PARTNER10',
+        amount: 4999,
+        currency: 'EUR',
+      })
+
+      expect(result).toEqual({ success: true, conversionId: 'conv_code' })
+      const sentBody = JSON.parse(
+        (global.fetch as ReturnType<typeof vi.fn>).mock.calls[0][1].body,
+      )
+      expect(sentBody).toMatchObject({
+        externalId: 'ORD-CODE',
+        affiliateCode: 'PARTNER10',
+        amount: 4999,
+        currency: 'EUR',
+        conversionType: 'SALE',
+      })
     })
 
     it('should include Authorization header with secret key', async () => {

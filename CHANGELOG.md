@@ -5,6 +5,44 @@ All notable changes to the RefCampaign SDK will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.0] - 2026-06-17
+
+### Added
+
+- **Affiliate code postback attribution.** `ConversionData` accepts a new
+  optional `affiliateCode` field, letting server-side conversions attribute
+  directly from an affiliate's tracking code — a third attribution path
+  alongside `sessionId` (preferred) and `customerEmailHash` (fallback). The
+  postback validation now accepts a request carrying any one of the three;
+  `affiliateCode` is forwarded to `/api/v1/conversions/postback` when present.
+  Backward-compatible: existing `sessionId` / `customerEmailHash` callers are
+  unchanged.
+
+## [2.1.1] - 2026-06-16
+
+### Fixed
+
+- **`identify()` no longer hangs an awaiting caller.** The request now runs under
+  a 3s `AbortController` timeout (it previously had none), so awaiting it inside
+  a login/signup handler can no longer freeze the merchant's flow on a stalled
+  connection. Still best-effort — timeouts and network errors are swallowed.
+- **Cookie parsing preserves `=` in values.** `parseCookies` split on every `=`,
+  truncating any cookie value that itself contained one (base64 padding, JWTs).
+  It now splits on the first `=` only.
+- **Cross-subdomain attribution on ccTLDs.** `getCookieDomain` returned a bare
+  public suffix (e.g. `.co.uk`) for hosts like `shop.acme.co.uk`, which browsers
+  reject — silently dropping the parent-domain cookie. A small set of common
+  2-level suffixes (`.co.uk`, `.com.br`, `.com.au`, …) now falls back to the
+  registrable domain (`.acme.co.uk`).
+
+### Security
+
+- **No plaintext session cookie on insecure http.** On a real (non-localhost)
+  http origin the SDK now skips writing the `_rc_sid` cookie — which would lack
+  `Secure` and travel in cleartext — and relies on localStorage instead, warning
+  once. The session id gates commission attribution, so this avoids a
+  network-readable/forgeable token.
+
 ## [2.1.0] - 2026-06-05
 
 ### Added

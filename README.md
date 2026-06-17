@@ -8,7 +8,7 @@
 
 Official JavaScript SDK for RefCampaign affiliate tracking.
 
-Track affiliate conversions seamlessly with automatic session ID capture and Stripe metadata injection.
+Track affiliate conversions with browser session capture, Stripe metadata handoff, and optional backend conversion tracking.
 
 ## Migrating to v2
 
@@ -25,8 +25,8 @@ double-count a conversion. If you call `trackConversion`, add a stable `orderId`
  })
 ```
 
-Calls without `orderId` now throw at runtime. The browser SDK and Stripe-metadata
-flow (`getStripeMetadata`) are unchanged. See the [CHANGELOG](./CHANGELOG.md) for the
+Calls without `orderId` now throw at runtime. The browser SDK and direct Stripe
+metadata handoff are unchanged. See the [CHANGELOG](./CHANGELOG.md) for the
 full list (automatic retries, `onError`, `conversionType`, `configure({ siteToken })`).
 
 ## Installation
@@ -43,26 +43,20 @@ One line in your `<head>`. Works for HTML, Webflow, Framer, WordPress, Wix, and 
 
 The script self-bootstraps : it captures the session ID from the URL/cookie/localStorage on every page load and exposes `window.RefCampaignBrowser` for advanced calls (e.g. `RefCampaignBrowser.identify(email)` after login).
 
-> **Server-side conversion attribution still requires Path 2** (npm `RefCampaignServer` in your backend) for Stripe metadata injection. The CDN script alone tracks clicks; pairing it with the server SDK closes the conversion loop.
+> Stripe attribution does not require a RefCampaign secret key. The CDN script captures clicks and sessions; your backend only needs to pass the captured session as Stripe `refcampaign_session` metadata.
 
-### Path 2 — CDN tag + npm server SDK (recommended for SaaS)
+### Path 2 — CDN tag + Stripe metadata handoff (recommended for SaaS)
 
-Path 1's `<script>` tag in your `<head>` for the browser side, plus :
-
-```bash
-pnpm add @refcampaign/sdk
-# or: npm install @refcampaign/sdk
-# or: yarn add @refcampaign/sdk
-```
+Path 1's `<script>` tag in your `<head>` for the browser side, plus a small backend handoff when you create Stripe payments:
 
 ```ts
 // In your Stripe checkout creation flow
-import { RefCampaignServer } from '@refcampaign/sdk'
-const rc = new RefCampaignServer(process.env.REFCAMPAIGN_SECRET_KEY)
-// → use rc.getStripeMetadata(sessionId) when creating Stripe sessions
+const sessionId = req.cookies.get('_rc_sid')?.value
+const metadata = sessionId ? { refcampaign_session: sessionId } : {}
+// → pass metadata when creating Stripe sessions, PaymentIntents, or subscriptions
 ```
 
-This is the canonical SaaS setup : the merchant's frontend uses the CDN tag for zero-config tracking ; the backend uses the npm package to inject `refcampaign_session` into Stripe metadata so conversions reconcile to commissions.
+This is the canonical SaaS setup : the merchant's frontend uses the CDN tag for zero-config tracking ; the backend passes `refcampaign_session` into Stripe metadata so conversions reconcile to commissions.
 
 ### Path 3 — Full npm (TypeScript, bundler-integrated)
 
@@ -75,15 +69,14 @@ pnpm add @refcampaign/sdk
 import { RefCampaignBrowser } from '@refcampaign/sdk'
 RefCampaignBrowser.captureSession()
 
-// Server side
-import { RefCampaignServer } from '@refcampaign/sdk'
+// Server side: read _rc_sid and pass { refcampaign_session } to Stripe metadata.
 ```
 
 Path 3 gets you full TypeScript types, tree-shaking, and bundler-integrated builds. Pick this if you're already on a bundler and want everything in your dependency graph.
 
 ### Pick ONE for the browser side
 
-Don't mix CDN (Path 1/2) and npm `RefCampaignBrowser` import (Path 3) — both share the same cookie and localStorage keys, so it works, but you double the network calls and the SDK will warn to your console. **Server side**, the npm `RefCampaignServer` is required regardless of which browser path you pick.
+Don't mix CDN (Path 1/2) and npm `RefCampaignBrowser` import (Path 3) — both share the same cookie and localStorage keys, so it works, but you double the network calls and the SDK will warn to your console. **Server side**, `RefCampaignServer` is required only when you wire manual backend conversions.
 
 ## Quick Start
 
@@ -102,15 +95,13 @@ console.log(`Session captured from ${source}:`, sessionId)
 const currentSession = RefCampaignBrowser.getSessionId()
 ```
 
-### Server Usage (Node.js, Next.js API routes)
+### Stripe Metadata Usage (Node.js, Next.js API routes)
 
-Inject RefCampaign session ID into Stripe checkouts automatically.
+Inject the RefCampaign session ID into Stripe checkouts.
 
 ```typescript
-import { RefCampaignServer } from '@refcampaign/sdk'
 import Stripe from 'stripe'
 
-const rc = new RefCampaignServer('sk_prod_xyz789')
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY)
 
 export async function POST(req: Request) {
@@ -119,10 +110,12 @@ export async function POST(req: Request) {
   // Get session ID from request (e.g., from cookie or header)
   const sessionId = getSessionIdFromRequest(req)
 
+  const metadata = sessionId ? { refcampaign_session: sessionId } : {}
+
   // Create Stripe checkout with RefCampaign metadata
   const checkout = await stripe.checkout.sessions.create({
     line_items: [{ price: priceId, quantity: 1 }],
-    metadata: rc.getStripeMetadata(sessionId), // ← Automatic conversion tracking!
+    metadata,
     mode: 'payment',
     success_url: 'https://yoursite.com/success',
     cancel_url: 'https://yoursite.com/cancel',
@@ -146,7 +139,7 @@ Place metadata on the **Payment Intent**:
 const paymentIntent = await stripe.paymentIntents.create({
   amount: 2400,
   currency: 'eur',
-  metadata: rc.getStripeMetadata(sessionId)  // ✅ On Payment Intent
+  metadata: sessionId ? { refcampaign_session: sessionId } : {} // ✅ On Payment Intent
 })
 ```
 
@@ -163,7 +156,7 @@ Place metadata on the **Subscription** (NOT on Customer):
 const subscription = await stripe.subscriptions.create({
   customer: customer.id,
   items: [{ price: 'price_xxx' }],
-  metadata: rc.getStripeMetadata(sessionId)  // ✅ On Subscription ONLY
+  metadata: sessionId ? { refcampaign_session: sessionId } : {} // ✅ On Subscription ONLY
 })
 ```
 
@@ -195,8 +188,8 @@ Month 7: Customer cancels subscription
 ```
 
 **Important Notes:**
-- Stripe automatically copies `checkout.session.metadata` to the created subscription
-- You don't need to manually set subscription metadata when using Checkout Sessions
+- For Checkout subscriptions, set metadata on both the Checkout Session and `subscription_data`
+- `subscription_data.metadata` is what keeps attribution on recurring invoices
 - For server-side subscription creation, explicitly set metadata on the subscription object
 
 ## Complete Examples
@@ -235,16 +228,15 @@ export default function RootLayout({ children }) {
 ```typescript
 // app/api/checkout/route.ts
 import { NextRequest, NextResponse } from 'next/server'
-import { RefCampaignServer } from '@refcampaign/sdk'
 import Stripe from 'stripe'
 
-const rc = new RefCampaignServer(process.env.REFCAMPAIGN_SECRET_KEY!)
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!)
 
 export async function POST(req: NextRequest) {
   try {
     // Get session ID from cookie
     const sessionId = req.cookies.get('_rc_sid')?.value
+    const metadata = sessionId ? { refcampaign_session: sessionId } : {}
 
     // Get price from request
     const { priceId } = await req.json()
@@ -254,7 +246,8 @@ export async function POST(req: NextRequest) {
       line_items: [{ price: priceId, quantity: 1 }],
 
       // ✅ Required: Session metadata (automatically copied to subscription)
-      metadata: rc.getStripeMetadata(sessionId),
+      metadata,
+      subscription_data: { metadata },
 
       mode: 'subscription',
       success_url: `${process.env.NEXT_PUBLIC_APP_URL}/success`,
@@ -320,20 +313,20 @@ function App() {
 // server.ts
 import express from 'express'
 import Stripe from 'stripe'
-import { RefCampaignServer } from '@refcampaign/sdk'
 
 const app = express()
-const rc = new RefCampaignServer(process.env.REFCAMPAIGN_SECRET_KEY)
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY)
 
 app.post('/api/checkout', async (req, res) => {
   const { priceId, sessionId } = req.body
+  const metadata = sessionId ? { refcampaign_session: sessionId } : {}
 
   const checkout = await stripe.checkout.sessions.create({
     line_items: [{ price: priceId, quantity: 1 }],
 
     // Session metadata (automatically copied to subscription)
-    metadata: rc.getStripeMetadata(sessionId),
+    metadata,
+    subscription_data: { metadata },
 
     mode: 'subscription',
     success_url: 'https://yoursite.com/success',
@@ -599,7 +592,7 @@ RefCampaignBrowser.configure({ apiBase: 'https://app.test.refcampaign.com' })
 
 ### `RefCampaignServer`
 
-Server-side API for Stripe metadata injection and conversion tracking.
+Server-side API for manual conversion tracking. It also exposes a Stripe metadata helper for advanced backend setups.
 
 #### Constructor
 
