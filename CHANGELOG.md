@@ -5,6 +5,24 @@ All notable changes to the RefCampaign SDK will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.3.0] - 2026-06-18
+
+### Added
+
+- **`RefCampaignServer.refundConversion()`.** Server-side wrapper for
+  `POST /api/v1/conversions/refund` — the counterpart to `trackConversion()`.
+  Reverses a previously reported conversion and claws back the affiliate
+  commission (prorated for partial refunds). Accepts `{ orderId, amount?, reason? }`:
+  omit `amount` for a full refund. Idempotent on `orderId` — a repeat call resolves
+  with `alreadyRefunded: true`. Shares the same retry/timeout/`onError` plumbing as
+  `trackConversion`. New exported types `RefundConversionData` and
+  `RefundConversionResponse`.
+
+### Changed
+
+- The `onError` callback context gains an `operation: 'track' | 'refund'` field so
+  monitoring can tell the two calls apart. Additive — existing handlers keep working.
+
 ## [2.2.0] - 2026-06-17
 
 ### Added

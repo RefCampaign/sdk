@@ -179,7 +179,7 @@ describe('RefCampaignServer', () => {
       expect(onError).toHaveBeenCalledTimes(1)
       const [error, context] = onError.mock.calls[0]
       expect(error).toBeInstanceOf(Error)
-      expect(context).toEqual({ orderId: 'ORD-ERR', attempts: 1 })
+      expect(context).toEqual({ orderId: 'ORD-ERR', attempts: 1, operation: 'track' })
     })
 
     it('does not throw when the onError callback itself throws', async () => {
@@ -317,6 +317,138 @@ describe('RefCampaignServer', () => {
       const result = await rc.trackConversion({ orderId: 'ORD-N', amount: 100, currency: 'EUR', sessionId: 'sess_abcdef12' })
       expect(result).toEqual({ success: true, conversionId: 'conv_net' })
       expect(global.fetch).toHaveBeenCalledTimes(2)
+    })
+  })
+
+  describe('refundConversion', () => {
+    beforeEach(() => {
+      global.fetch = vi.fn()
+    })
+
+    afterEach(() => {
+      vi.restoreAllMocks()
+    })
+
+    it('posts a full refund to the refund endpoint with orderId mapped to externalId', async () => {
+      ;(global.fetch as ReturnType<typeof vi.fn>).mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: async () => ({ success: true, data: { success: true, conversionId: 'conv_1', alreadyRefunded: false }, meta: { timestamp: 'x' } }),
+      })
+
+      const rc = new RefCampaignServer('sk_test_abcdefghij')
+      const result = await rc.refundConversion({ orderId: 'ORD-1' })
+
+      expect(result).toEqual({ success: true, conversionId: 'conv_1', alreadyRefunded: false })
+      expect(global.fetch).toHaveBeenCalledWith(
+        'https://app.refcampaign.com/api/v1/conversions/refund',
+        expect.objectContaining({
+          method: 'POST',
+          headers: expect.objectContaining({ Authorization: 'Bearer sk_test_abcdefghij' }),
+        }),
+      )
+      const sentBody = JSON.parse(
+        (global.fetch as ReturnType<typeof vi.fn>).mock.calls[0][1].body,
+      )
+      expect(sentBody).toEqual({ externalId: 'ORD-1' })
+    })
+
+    it('forwards amount and reason for a partial refund', async () => {
+      ;(global.fetch as ReturnType<typeof vi.fn>).mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: async () => ({ success: true, data: { success: true, conversionId: 'conv_2', alreadyRefunded: false }, meta: {} }),
+      })
+
+      const rc = new RefCampaignServer('sk_test_abcdefghij')
+      await rc.refundConversion({ orderId: 'ORD-2', amount: 1000, reason: 'partial return' })
+
+      const sentBody = JSON.parse(
+        (global.fetch as ReturnType<typeof vi.fn>).mock.calls[0][1].body,
+      )
+      expect(sentBody).toEqual({ externalId: 'ORD-2', amount: 1000, reason: 'partial return' })
+    })
+
+    it('surfaces alreadyRefunded on an idempotent repeat', async () => {
+      ;(global.fetch as ReturnType<typeof vi.fn>).mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: async () => ({ success: true, data: { success: true, conversionId: 'conv_3', alreadyRefunded: true, message: 'Conversion already refunded' }, meta: {} }),
+      })
+
+      const rc = new RefCampaignServer('sk_test_abcdefghij')
+      const result = await rc.refundConversion({ orderId: 'ORD-3' })
+
+      expect(result).toMatchObject({
+        success: true,
+        conversionId: 'conv_3',
+        alreadyRefunded: true,
+        message: 'Conversion already refunded',
+      })
+    })
+
+    it('throws when orderId is missing', async () => {
+      const rc = new RefCampaignServer('sk_test_abcdefghij')
+      // @ts-expect-error orderId is required
+      await expect(rc.refundConversion({})).rejects.toThrow('orderId')
+    })
+
+    it('throws when amount is provided but not a positive integer', async () => {
+      const rc = new RefCampaignServer('sk_test_abcdefghij')
+      await expect(rc.refundConversion({ orderId: 'ORD-4', amount: 49.99 }))
+        .rejects.toThrow(/Invalid amount/)
+    })
+
+    it('retries on a 5xx and succeeds', async () => {
+      ;(global.fetch as ReturnType<typeof vi.fn>)
+        .mockResolvedValueOnce({
+          ok: false,
+          status: 503,
+          statusText: 'Service Unavailable',
+          text: async () => 'try later',
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          json: async () => ({ success: true, data: { success: true, conversionId: 'conv_5' }, meta: {} }),
+        })
+      const rc = new RefCampaignServer('sk_test_abcdefghij', { retry: { attempts: 2, baseDelayMs: 1 } })
+      const result = await rc.refundConversion({ orderId: 'ORD-5' })
+      expect(result).toMatchObject({ success: true, conversionId: 'conv_5' })
+      expect(global.fetch).toHaveBeenCalledTimes(2)
+    })
+
+    it('does not retry a 409 not-refundable and returns the error', async () => {
+      ;(global.fetch as ReturnType<typeof vi.fn>).mockResolvedValue({
+        ok: false,
+        status: 409,
+        statusText: 'Conflict',
+        text: async () => 'not refundable (status: PENDING)',
+      })
+      const rc = new RefCampaignServer('sk_test_abcdefghij', { retry: { attempts: 3, baseDelayMs: 1 } })
+      const result = await rc.refundConversion({ orderId: 'ORD-6' })
+      expect(result.success).toBe(false)
+      expect(result.error).toContain('409')
+      expect(global.fetch).toHaveBeenCalledTimes(1)
+    })
+
+    it('invokes onError with operation "refund" after a failed call', async () => {
+      ;(global.fetch as ReturnType<typeof vi.fn>).mockResolvedValue({
+        ok: false,
+        status: 500,
+        statusText: 'Server Error',
+        text: async () => 'boom',
+      })
+      const onError = vi.fn()
+      const rc = new RefCampaignServer('sk_test_abcdefghij', {
+        retry: { attempts: 1, baseDelayMs: 1 },
+        onError,
+      })
+      await rc.refundConversion({ orderId: 'ORD-ERR' })
+      expect(onError).toHaveBeenCalledTimes(1)
+      const [error, context] = onError.mock.calls[0]
+      expect(error).toBeInstanceOf(Error)
+      expect(context).toEqual({ orderId: 'ORD-ERR', attempts: 1, operation: 'refund' })
     })
   })
 })

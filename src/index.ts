@@ -29,6 +29,8 @@ export type {
   ConversionData,
   ConversionType,
   TrackConversionResponse,
+  RefundConversionData,
+  RefundConversionResponse,
   SessionCaptureResult,
   SessionIdSource,
 } from './types'

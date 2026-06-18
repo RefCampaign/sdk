@@ -371,6 +371,28 @@ async function handlePayPalPayment(orderId: string, sessionId: string, amount: n
 }
 ```
 
+### Refunding a conversion
+
+When a customer is refunded, reverse the conversion so the affiliate commission is clawed back (prorata for partial refunds). Pass the same `orderId` you reported — the call is idempotent.
+
+```typescript
+// Full refund
+await rc.refundConversion({ orderId: 'ORD-123' })
+
+// Partial refund of €10.00
+const result = await rc.refundConversion({
+  orderId: 'ORD-123',
+  amount: 1000, // cents
+  reason: 'partial return',
+})
+
+if (result.alreadyRefunded) {
+  // This conversion was already refunded — idempotent no-op.
+}
+```
+
+Only `APPROVED` conversions are refundable (`404` if the order is unknown, `409` if it is not in a refundable state).
+
 ---
 
 ## Email Hash Fallback (Cross-Device Attribution)

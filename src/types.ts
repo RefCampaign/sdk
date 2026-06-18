@@ -27,12 +27,16 @@ export interface RefCampaignServerConfig {
     baseDelayMs?: number
   }
   /**
-   * Invoked when a conversion send ultimately fails (non-retryable error or
+   * Invoked when a server request ultimately fails (non-retryable error or
    * exhausted retries). Wire your own monitoring (Sentry, logs, alerting)
-   * here — a conversion that never reaches the API would otherwise be silent.
-   * A throwing callback is caught and never breaks `trackConversion`.
+   * here — a conversion or refund that never reaches the API would otherwise
+   * be silent. A throwing callback is caught and never breaks the call.
+   * `operation` distinguishes `trackConversion` from `refundConversion`.
    */
-  onError?: (error: Error, context: { orderId: string; attempts: number }) => void
+  onError?: (
+    error: Error,
+    context: { orderId: string; attempts: number; operation: 'track' | 'refund' }
+  ) => void
 }
 
 /**
@@ -55,6 +59,31 @@ export interface ConversionData {
   customerEmailHash?: string
   /** Additional metadata */
   metadata?: Record<string, unknown>
+}
+
+/**
+ * Data for refunding a previously reported conversion
+ */
+export interface RefundConversionData {
+  /** Merchant order id used when the conversion was reported (externalId). Required. */
+  orderId: string
+  /** Partial refund amount in cents. Omit for a full refund. */
+  amount?: number
+  /** Optional reason, recorded in the commission clawback ledger (1–500 chars). */
+  reason?: string
+}
+
+/**
+ * API response for a conversion refund
+ */
+export interface RefundConversionResponse {
+  success: boolean
+  conversionId?: string
+  /** True when the conversion was already refunded — idempotent no-op. */
+  alreadyRefunded?: boolean
+  /** Human-readable note, e.g. "Conversion already refunded" on an idempotent repeat. */
+  message?: string
+  error?: string
 }
 
 /**

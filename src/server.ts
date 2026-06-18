@@ -10,6 +10,8 @@ import type {
   StripeMetadata,
   ConversionData,
   TrackConversionResponse,
+  RefundConversionData,
+  RefundConversionResponse,
 } from './types'
 import {
   validateSecretKey,
@@ -141,7 +143,6 @@ export class RefCampaignServer {
       throw new Error('[RefCampaign] affiliateCode, sessionId, or customerEmailHash is required for attribution')
     }
 
-    const url = `${this.apiUrl}/api/v1/conversions/postback`
     const payload = {
       externalId: data.orderId,
       amount: data.amount,
@@ -153,6 +154,63 @@ export class RefCampaignServer {
       ...(data.metadata ? { metadata: data.metadata } : {}),
     }
 
+    return this.post<TrackConversionResponse>(
+      `${this.apiUrl}/api/v1/conversions/postback`,
+      payload,
+      { orderId: data.orderId, operation: 'track' }
+    )
+  }
+
+  /**
+   * Refund a previously reported conversion (non-Stripe billing, e.g. Shopify)
+   *
+   * Reverses a conversion you reported via `trackConversion` (or any postback)
+   * and claws back the associated affiliate commission — prorated for partial
+   * refunds. The conversion must be in `APPROVED` state. The call is idempotent
+   * on `orderId`: a second refund returns `alreadyRefunded: true`.
+   *
+   * @param data - Refund data (orderId required; amount optional for partial)
+   * @returns Promise with refund result
+   * @throws Error if validation fails
+   *
+   * @example
+   * // Full refund
+   * await rc.refundConversion({ orderId: 'ORD-123' })
+   *
+   * // Partial refund of €10.00 with a reason
+   * await rc.refundConversion({ orderId: 'ORD-123', amount: 1000, reason: 'partial return' })
+   */
+  async refundConversion(data: RefundConversionData): Promise<RefundConversionResponse> {
+    if (!data.orderId || typeof data.orderId !== 'string') {
+      throw new Error('[RefCampaign] orderId is required to refund a conversion')
+    }
+    if (data.amount !== undefined && !validateAmount(data.amount)) {
+      throw new Error('[RefCampaign] Invalid amount: must be a positive integer in cents')
+    }
+
+    const payload = {
+      externalId: data.orderId,
+      ...(data.amount !== undefined ? { amount: data.amount } : {}),
+      ...(data.reason ? { reason: data.reason } : {}),
+    }
+
+    return this.post<RefundConversionResponse>(
+      `${this.apiUrl}/api/v1/conversions/refund`,
+      payload,
+      { orderId: data.orderId, operation: 'refund' }
+    )
+  }
+
+  /**
+   * Shared POST with timeout, exponential-backoff retry on 429/5xx, response
+   * envelope unwrapping, and `onError` reporting. Used by both
+   * `trackConversion` and `refundConversion`.
+   */
+  private async post<T extends { success: boolean; error?: string }>(
+    url: string,
+    payload: Record<string, unknown>,
+    context: { orderId: string; operation: 'track' | 'refund' }
+  ): Promise<T> {
     // Guard against a misconfigured attempts value of 0 or negative, which
     // would silently skip the call entirely.
     const attempts = Math.max(1, this.config.retry?.attempts ?? 3)
@@ -163,11 +221,12 @@ export class RefCampaignServer {
     const reportFailure = (failedAttempts: number) => {
       try {
         this.config.onError?.(new Error(lastError), {
-          orderId: data.orderId,
+          orderId: context.orderId,
           attempts: failedAttempts,
+          operation: context.operation,
         })
       } catch {
-        // A throwing onError callback must never break trackConversion.
+        // A throwing onError callback must never break the call.
       }
     }
 
@@ -187,14 +246,13 @@ export class RefCampaignServer {
 
         if (response.ok) {
           try {
-            const parsed: { data?: TrackConversionResponse } & TrackConversionResponse =
-              await response.json()
+            const parsed: { data?: T } & T = await response.json()
             // The platform wraps every handler return in { success, data, meta }.
             // Unwrap to the inner payload; fall back to the raw body defensively
             // in case an environment doesn't apply the envelope.
-            return (parsed?.data ?? parsed) as TrackConversionResponse
+            return (parsed?.data ?? parsed) as T
           } catch {
-            return { success: false, error: 'Malformed success response from API' }
+            return { success: false, error: 'Malformed success response from API' } as T
           }
         }
 
@@ -202,7 +260,7 @@ export class RefCampaignServer {
         lastError = `API request failed: ${response.status} ${response.statusText} - ${await response.text()}`
         if (!retryable) {
           reportFailure(attempt)
-          return { success: false, error: lastError }
+          return { success: false, error: lastError } as T
         }
       } catch (error) {
         lastError = error instanceof Error ? error.message : 'Unknown error occurred'
@@ -218,10 +276,10 @@ export class RefCampaignServer {
     }
 
     if (this.config.debug) {
-      console.error('[RefCampaign] Failed to track conversion after retries:', lastError)
+      console.error(`[RefCampaign] Failed to ${context.operation} after retries:`, lastError)
     }
     reportFailure(attempts)
-    return { success: false, error: lastError }
+    return { success: false, error: lastError } as T
   }
 
   /**
