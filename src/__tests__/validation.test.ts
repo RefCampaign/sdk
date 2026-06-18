@@ -8,15 +8,16 @@ import {
 
 describe('validateSecretKey', () => {
   it('should accept valid secret keys', () => {
-    expect(validateSecretKey('sk_test_abc123')).toBe(true)
-    expect(validateSecretKey('sk_prod_xyz789')).toBe(true)
-    expect(validateSecretKey('sk_1234567890')).toBe(true)
+    expect(validateSecretKey('rc_test_abc123')).toBe(true)
+    expect(validateSecretKey('rc_live_xyz789')).toBe(true)
+    expect(validateSecretKey('rc_test_1234567890')).toBe(true)
   })
 
   it('should reject invalid secret keys', () => {
+    expect(validateSecretKey('sk_test_abc123')).toBe(false)
     expect(validateSecretKey('pk_test_abc')).toBe(false)
-    expect(validateSecretKey('sk_short')).toBe(false)
-    expect(validateSecretKey('sk_')).toBe(false)
+    expect(validateSecretKey('rc_test_')).toBe(false)
+    expect(validateSecretKey('rc_live_')).toBe(false)
     expect(validateSecretKey('')).toBe(false)
     expect(validateSecretKey('invalid')).toBe(false)
   })

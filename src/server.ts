@@ -27,17 +27,17 @@ export class RefCampaignServer {
   /**
    * Initialize RefCampaign server SDK
    *
-   * @param secretKey - Secret API key (starts with sk_)
+   * @param secretKey - Secret API key (starts with rc_live_ or rc_test_)
    * @param config - Optional configuration
    * @throws Error if secretKey is invalid
    *
    * @example
-   * const rc = new RefCampaignServer('sk_prod_abc123')
+   * const rc = new RefCampaignServer('rc_live_...')
    */
   constructor(secretKey: string, config?: Partial<RefCampaignServerConfig>) {
     if (!validateSecretKey(secretKey)) {
       throw new Error(
-        '[RefCampaign] Invalid secretKey: must start with "sk_" and be at least 10 characters long'
+        '[RefCampaign] Invalid secretKey: must start with "rc_live_" or "rc_test_" and be at least 10 characters long'
       )
     }
 

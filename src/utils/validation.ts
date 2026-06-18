@@ -2,12 +2,18 @@
  * Validation utilities for RefCampaign SDK
  */
 
+const LIVE_PREFIX = 'rc_live_'
+const TEST_PREFIX = 'rc_test_'
 
 /**
- * Validate secret API key format (must start with sk_)
+ * Validate secret API key format (must start with rc_live_ or rc_test_)
  */
 export function validateSecretKey(key: string): boolean {
-  return typeof key === 'string' && key.startsWith('sk_') && key.length > 10
+  return (
+    typeof key === 'string' &&
+    (key.startsWith(LIVE_PREFIX) || key.startsWith(TEST_PREFIX)) &&
+    key.length > 10
+  )
 }
 
 /**

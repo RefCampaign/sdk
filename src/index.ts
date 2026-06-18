@@ -15,7 +15,7 @@
  * // Server usage
  * import { RefCampaignServer } from '@refcampaign/sdk'
  *
- * const rc = new RefCampaignServer('sk_prod_abc123')
+ * const rc = new RefCampaignServer('rc_live_...')
  * const metadata = rc.getStripeMetadata(sessionId)
  *
  * @packageDocumentation

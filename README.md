@@ -348,7 +348,7 @@ For non-Stripe conversions (PayPal, bank transfer, etc.), use manual tracking:
 ```typescript
 import { RefCampaignServer } from '@refcampaign/sdk'
 
-const rc = new RefCampaignServer('sk_prod_xyz789')
+const rc = new RefCampaignServer('rc_live_...')
 
 async function handlePayPalPayment(orderId: string, sessionId: string, amount: number) {
   // Track conversion manually
@@ -669,7 +669,7 @@ const result = await rc.trackConversion({
 type ConversionType = 'SALE' | 'LEAD' | 'TRIAL' | 'CUSTOM'
 
 interface RefCampaignServerConfig {
-  secretKey: string   // Starts with 'sk_'
+  secretKey: string   // Starts with 'rc_live_' or 'rc_test_'
   apiUrl?: string
   debug?: boolean
   timeoutMs?: number  // Per-request timeout in ms (default: 10000)

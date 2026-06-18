@@ -5,7 +5,7 @@ describe('RefCampaignServer', () => {
   describe('constructor', () => {
     it('should initialize with valid secret key', () => {
       expect(() => {
-        new RefCampaignServer('sk_test_abc123')
+        new RefCampaignServer('rc_test_abc123')
       }).not.toThrow()
     })
 
@@ -17,19 +17,19 @@ describe('RefCampaignServer', () => {
 
     it('should throw error with short secret key', () => {
       expect(() => {
-        new RefCampaignServer('sk_short')
+        new RefCampaignServer('rc_test_x')
       }).toThrow(/Invalid secretKey/)
     })
 
     it('should accept custom API URL', () => {
-      const rc = new RefCampaignServer('sk_test_abc123', {
+      const rc = new RefCampaignServer('rc_test_abc123', {
         apiUrl: 'https://custom.refcampaign.com',
       })
       expect(rc.getApiUrl()).toBe('https://custom.refcampaign.com')
     })
 
     it('should use default API URL', () => {
-      const rc = new RefCampaignServer('sk_test_abc123')
+      const rc = new RefCampaignServer('rc_test_abc123')
       expect(rc.getApiUrl()).toBe('https://app.refcampaign.com')
     })
   })
@@ -38,7 +38,7 @@ describe('RefCampaignServer', () => {
     let rc: RefCampaignServer
 
     beforeEach(() => {
-      rc = new RefCampaignServer('sk_test_abc123')
+      rc = new RefCampaignServer('rc_test_abc123')
     })
 
     it('should return metadata with valid session ID', () => {
@@ -85,7 +85,7 @@ describe('RefCampaignServer', () => {
         json: async () => ({ success: true, data: { success: true, conversionId: 'conv_1' }, meta: { timestamp: 'x' } }),
       })
 
-      const rc = new RefCampaignServer('sk_test_abcdefghij')
+      const rc = new RefCampaignServer('rc_test_abcdefghij')
       const result = await rc.trackConversion({
         orderId: 'ORD-1',
         sessionId: 'test-session-123',
@@ -106,7 +106,7 @@ describe('RefCampaignServer', () => {
     })
 
     it('throws when orderId is missing', async () => {
-      const rc = new RefCampaignServer('sk_test_abcdefghij')
+      const rc = new RefCampaignServer('rc_test_abcdefghij')
       // @ts-expect-error orderId is required
       await expect(rc.trackConversion({ amount: 100, currency: 'EUR', sessionId: 'sess_abcdef12' }))
         .rejects.toThrow('orderId')
@@ -127,7 +127,7 @@ describe('RefCampaignServer', () => {
           json: async () => ({ success: true, data: { success: true, conversionId: 'conv_2' }, meta: {} }),
         })
 
-      const rc = new RefCampaignServer('sk_test_abcdefghij', { retry: { attempts: 2, baseDelayMs: 1 } })
+      const rc = new RefCampaignServer('rc_test_abcdefghij', { retry: { attempts: 2, baseDelayMs: 1 } })
       const result = await rc.trackConversion({
         orderId: 'ORD-2',
         amount: 100,
@@ -147,7 +147,7 @@ describe('RefCampaignServer', () => {
         statusText: 'Server Error',
         text: async () => 'boom',
       })
-      const rc = new RefCampaignServer('sk_test_abcdefghij', { retry: { attempts: 2, baseDelayMs: 1 } })
+      const rc = new RefCampaignServer('rc_test_abcdefghij', { retry: { attempts: 2, baseDelayMs: 1 } })
       const result = await rc.trackConversion({
         orderId: 'ORD-3',
         amount: 100,
@@ -166,7 +166,7 @@ describe('RefCampaignServer', () => {
         text: async () => 'boom',
       })
       const onError = vi.fn()
-      const rc = new RefCampaignServer('sk_test_abcdefghij', {
+      const rc = new RefCampaignServer('rc_test_abcdefghij', {
         retry: { attempts: 1, baseDelayMs: 1 },
         onError,
       })
@@ -189,7 +189,7 @@ describe('RefCampaignServer', () => {
         statusText: 'Server Error',
         text: async () => 'boom',
       })
-      const rc = new RefCampaignServer('sk_test_abcdefghij', {
+      const rc = new RefCampaignServer('rc_test_abcdefghij', {
         retry: { attempts: 1, baseDelayMs: 1 },
         onError: () => {
           throw new Error('callback blew up')
@@ -205,7 +205,7 @@ describe('RefCampaignServer', () => {
     })
 
     it('should throw error with invalid amount', async () => {
-      const rc = new RefCampaignServer('sk_test_abc123')
+      const rc = new RefCampaignServer('rc_test_abc123')
       await expect(
         rc.trackConversion({
           orderId: 'ORD-4',
@@ -217,7 +217,7 @@ describe('RefCampaignServer', () => {
     })
 
     it('should throw error with invalid currency', async () => {
-      const rc = new RefCampaignServer('sk_test_abc123')
+      const rc = new RefCampaignServer('rc_test_abc123')
       await expect(
         rc.trackConversion({
           orderId: 'ORD-5',
@@ -229,7 +229,7 @@ describe('RefCampaignServer', () => {
     })
 
     it('should throw when no attribution identifier is provided', async () => {
-      const rc = new RefCampaignServer('sk_test_abc123')
+      const rc = new RefCampaignServer('rc_test_abc123')
       await expect(
         rc.trackConversion({
           orderId: 'ORD-6',
@@ -246,7 +246,7 @@ describe('RefCampaignServer', () => {
         json: async () => ({ success: true, data: { success: true, conversionId: 'conv_code' }, meta: {} }),
       })
 
-      const rc = new RefCampaignServer('sk_test_abc123')
+      const rc = new RefCampaignServer('rc_test_abc123')
       const result = await rc.trackConversion({
         orderId: 'ORD-CODE',
         affiliateCode: 'PARTNER10',
@@ -274,7 +274,7 @@ describe('RefCampaignServer', () => {
         json: async () => ({ success: true, data: { success: true, conversionId: 'conv_123' }, meta: {} }),
       })
 
-      const rc = new RefCampaignServer('sk_test_abc123')
+      const rc = new RefCampaignServer('rc_test_abc123')
       await rc.trackConversion({
         orderId: 'ORD-7',
         sessionId: 'test-session-123',
@@ -288,7 +288,7 @@ describe('RefCampaignServer', () => {
           method: 'POST',
           headers: expect.objectContaining({
             'Content-Type': 'application/json',
-            Authorization: 'Bearer sk_test_abc123',
+            Authorization: 'Bearer rc_test_abc123',
           }),
         }),
       )
@@ -300,7 +300,7 @@ describe('RefCampaignServer', () => {
         status: 200,
         json: async () => { throw new Error('bad json') },
       })
-      const rc = new RefCampaignServer('sk_test_abcdefghij')
+      const rc = new RefCampaignServer('rc_test_abcdefghij')
       const result = await rc.trackConversion({ orderId: 'ORD-J', amount: 100, currency: 'EUR', sessionId: 'sess_abcdef12' })
       expect(result).toEqual({ success: false, error: 'Malformed success response from API' })
     })
@@ -313,7 +313,7 @@ describe('RefCampaignServer', () => {
           status: 200,
           json: async () => ({ success: true, data: { success: true, conversionId: 'conv_net' }, meta: {} }),
         })
-      const rc = new RefCampaignServer('sk_test_abcdefghij', { retry: { attempts: 2, baseDelayMs: 1 } })
+      const rc = new RefCampaignServer('rc_test_abcdefghij', { retry: { attempts: 2, baseDelayMs: 1 } })
       const result = await rc.trackConversion({ orderId: 'ORD-N', amount: 100, currency: 'EUR', sessionId: 'sess_abcdef12' })
       expect(result).toEqual({ success: true, conversionId: 'conv_net' })
       expect(global.fetch).toHaveBeenCalledTimes(2)
@@ -336,7 +336,7 @@ describe('RefCampaignServer', () => {
         json: async () => ({ success: true, data: { success: true, conversionId: 'conv_1', alreadyRefunded: false }, meta: { timestamp: 'x' } }),
       })
 
-      const rc = new RefCampaignServer('sk_test_abcdefghij')
+      const rc = new RefCampaignServer('rc_test_abcdefghij')
       const result = await rc.refundConversion({ orderId: 'ORD-1' })
 
       expect(result).toEqual({ success: true, conversionId: 'conv_1', alreadyRefunded: false })
@@ -344,7 +344,7 @@ describe('RefCampaignServer', () => {
         'https://app.refcampaign.com/api/v1/conversions/refund',
         expect.objectContaining({
           method: 'POST',
-          headers: expect.objectContaining({ Authorization: 'Bearer sk_test_abcdefghij' }),
+          headers: expect.objectContaining({ Authorization: 'Bearer rc_test_abcdefghij' }),
         }),
       )
       const sentBody = JSON.parse(
@@ -360,7 +360,7 @@ describe('RefCampaignServer', () => {
         json: async () => ({ success: true, data: { success: true, conversionId: 'conv_2', alreadyRefunded: false }, meta: {} }),
       })
 
-      const rc = new RefCampaignServer('sk_test_abcdefghij')
+      const rc = new RefCampaignServer('rc_test_abcdefghij')
       await rc.refundConversion({ orderId: 'ORD-2', amount: 1000, reason: 'partial return' })
 
       const sentBody = JSON.parse(
@@ -376,7 +376,7 @@ describe('RefCampaignServer', () => {
         json: async () => ({ success: true, data: { success: true, conversionId: 'conv_3', alreadyRefunded: true, message: 'Conversion already refunded' }, meta: {} }),
       })
 
-      const rc = new RefCampaignServer('sk_test_abcdefghij')
+      const rc = new RefCampaignServer('rc_test_abcdefghij')
       const result = await rc.refundConversion({ orderId: 'ORD-3' })
 
       expect(result).toMatchObject({
@@ -388,13 +388,13 @@ describe('RefCampaignServer', () => {
     })
 
     it('throws when orderId is missing', async () => {
-      const rc = new RefCampaignServer('sk_test_abcdefghij')
+      const rc = new RefCampaignServer('rc_test_abcdefghij')
       // @ts-expect-error orderId is required
       await expect(rc.refundConversion({})).rejects.toThrow('orderId')
     })
 
     it('throws when amount is provided but not a positive integer', async () => {
-      const rc = new RefCampaignServer('sk_test_abcdefghij')
+      const rc = new RefCampaignServer('rc_test_abcdefghij')
       await expect(rc.refundConversion({ orderId: 'ORD-4', amount: 49.99 }))
         .rejects.toThrow(/Invalid amount/)
     })
@@ -412,7 +412,7 @@ describe('RefCampaignServer', () => {
           status: 200,
           json: async () => ({ success: true, data: { success: true, conversionId: 'conv_5' }, meta: {} }),
         })
-      const rc = new RefCampaignServer('sk_test_abcdefghij', { retry: { attempts: 2, baseDelayMs: 1 } })
+      const rc = new RefCampaignServer('rc_test_abcdefghij', { retry: { attempts: 2, baseDelayMs: 1 } })
       const result = await rc.refundConversion({ orderId: 'ORD-5' })
       expect(result).toMatchObject({ success: true, conversionId: 'conv_5' })
       expect(global.fetch).toHaveBeenCalledTimes(2)
@@ -425,7 +425,7 @@ describe('RefCampaignServer', () => {
         statusText: 'Conflict',
         text: async () => 'not refundable (status: PENDING)',
       })
-      const rc = new RefCampaignServer('sk_test_abcdefghij', { retry: { attempts: 3, baseDelayMs: 1 } })
+      const rc = new RefCampaignServer('rc_test_abcdefghij', { retry: { attempts: 3, baseDelayMs: 1 } })
       const result = await rc.refundConversion({ orderId: 'ORD-6' })
       expect(result.success).toBe(false)
       expect(result.error).toContain('409')
@@ -440,7 +440,7 @@ describe('RefCampaignServer', () => {
         text: async () => 'boom',
       })
       const onError = vi.fn()
-      const rc = new RefCampaignServer('sk_test_abcdefghij', {
+      const rc = new RefCampaignServer('rc_test_abcdefghij', {
         retry: { attempts: 1, baseDelayMs: 1 },
         onError,
       })

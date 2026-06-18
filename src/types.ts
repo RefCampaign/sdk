@@ -11,7 +11,7 @@ export type ConversionType = 'SALE' | 'LEAD' | 'TRIAL' | 'CUSTOM'
  * Configuration for server-side SDK
  */
 export interface RefCampaignServerConfig {
-  /** Secret API key (starts with sk_) */
+  /** Secret API key (starts with rc_live_ or rc_test_) */
   secretKey: string
   /** Base URL for RefCampaign API (default: https://app.refcampaign.com) */
   apiUrl?: string
