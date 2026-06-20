@@ -1,6 +1,6 @@
 {
   "name": "@refcampaign/sdk",
-  "version": "3.0.0",
+  "version": "3.1.0",
   "description": "Official JavaScript SDK for RefCampaign - Track affiliate conversions with ease",
   "type": "module",
   "private": false,
@@ -22,9 +22,10 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
+    "smoke": "node scripts/smoke.mjs",
     "type-check": "tsc --noEmit",
     "prepublishOnly": "pnpm build && pnpm test && pnpm type-check",
-    "release": "npm publish --access public && git push origin sdk-v$npm_package_version"
+    "release": "bash ../../scripts/release-sdk.sh"
   },
   "keywords": [
     "refcampaign",

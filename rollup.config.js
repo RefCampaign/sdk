@@ -24,5 +24,8 @@ export default {
       rootDir: 'src',
     }),
   ],
-  external: [],
+  // `node:crypto` is used only by the server-side `verifyWebhookSignature`
+  // helper. Keep it external so it stays a bare import in the npm bundle
+  // (resolved by the consumer's Node runtime) and never gets inlined.
+  external: ['node:crypto'],
 }

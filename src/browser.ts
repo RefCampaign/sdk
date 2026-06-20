@@ -47,6 +47,12 @@ async function sha256Hex(input: string): Promise<string> {
 class RefCampaignBrowserClass {
   private apiBase: string = DEFAULT_API_BASE
   private siteToken: string | undefined
+  private debug = false
+
+  /** Console logger gated on the `debug` flag. No-op otherwise. */
+  private log(...args: unknown[]): void {
+    if (this.debug) console.log('[RefCampaign]', ...args)
+  }
 
   /**
    * Configure the SDK.
@@ -58,19 +64,29 @@ class RefCampaignBrowserClass {
    *   setup page. Required for npm installs to verify the install; the platform
    *   resolves the merchant by this token. CDN (`v1.js?s=...`) installs carry
    *   it via the script URL instead and don't need this.
+   * - `debug` — when true, logs configuration, session capture, identify, and
+   *   install-ping outcomes to the console. Off by default; turn on during
+   *   integration to confirm the SDK is wired correctly.
    *
    * @example
-   * RefCampaignBrowser.configure({ siteToken: 'rcst_...' })
+   * RefCampaignBrowser.configure({ siteToken: 'rcst_...', debug: true })
    */
-  configure(options: { apiBase?: string; siteToken?: string }): void {
+  configure(options: { apiBase?: string; siteToken?: string; debug?: boolean }): void {
     if (options.apiBase) {
       this.apiBase = options.apiBase.replace(/\/+$/, '')
     }
     if (options.siteToken) {
       this.siteToken = options.siteToken
     }
+    if (options.debug !== undefined) {
+      this.debug = options.debug
+    }
+    this.log('configured', {
+      apiBase: this.apiBase,
+      siteToken: this.siteToken ? `${this.siteToken.slice(0, 9)}…` : undefined,
+    })
     if (typeof window !== 'undefined') {
-      sendInstallPing(this.apiBase, this.siteToken)
+      sendInstallPing(this.apiBase, this.siteToken, this.debug)
     }
   }
 
@@ -95,7 +111,10 @@ class RefCampaignBrowserClass {
     if (!email || typeof email !== 'string') return
 
     const sessionId = this.getSessionId()
-    if (!sessionId) return // No active click — nothing to attach to.
+    if (!sessionId) {
+      this.log('identify skipped — no active session')
+      return // No active click — nothing to attach to.
+    }
 
     let emailHash: string
     try {
@@ -119,8 +138,10 @@ class RefCampaignBrowserClass {
         keepalive: true,
         signal: controller.signal,
       })
-    } catch {
+      this.log('identify sent for session', sessionId)
+    } catch (error) {
       // Network errors / timeout are expected on flaky connections — swallow.
+      this.log('identify failed', error)
     } finally {
       clearTimeout(timer)
     }
@@ -142,6 +163,13 @@ class RefCampaignBrowserClass {
    * console.log(result.source) // 'url' | 'cookie' | 'localStorage' | 'none'
    */
   captureSession(): SessionCaptureResult {
+    const result = this.resolveSessionCapture()
+    this.log('captureSession', result)
+    return result
+  }
+
+  /** Core session resolution (URL → cookie → localStorage). */
+  private resolveSessionCapture(): SessionCaptureResult {
     // Clean expired sessions first
     cleanExpiredSessions()
 

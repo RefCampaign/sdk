@@ -5,6 +5,22 @@ All notable changes to the RefCampaign SDK will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.1.0] - 2026-06-19
+
+### Added
+
+- **`verifyWebhookSignature()`.** Server-side helper to verify the authenticity
+  and freshness of outbound RefCampaign webhooks. Validates the
+  `X-RefCampaign-Signature` header (`t=<unix>,v1=<hex_sha256>`, HMAC-SHA256 over
+  `${t}.${rawBody}`) with a constant-time comparison and a configurable
+  `toleranceSeconds` replay window (default 300s). Uses `node:crypto` — call it
+  from a backend route, not from browser code.
+- **`WEBHOOK_EVENT_TYPES` / `WebhookEventType`.** The catalogue of lifecycle
+  events RefCampaign can deliver (`conversion.created`, `conversion.refunded`,
+  `conversion.commission_paid`, `conversion.disputed`,
+  `conversion.dispute_resolved`).
+- **`WEBHOOK_SIGNATURE_HEADER`.** The signature header name constant.
+
 ## [3.0.0] - 2026-06-18
 
 ### Changed

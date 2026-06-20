@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { RefCampaignBrowser } from '../browser'
 
 describe('RefCampaignBrowser', () => {
@@ -287,6 +287,36 @@ describe('RefCampaignBrowser', () => {
           body: JSON.stringify({ siteToken: 'rcst_abc' }),
         }),
       )
+    })
+  })
+
+  describe('debug logging', () => {
+    afterEach(() => {
+      // The singleton retains debug across tests — reset so other suites stay quiet.
+      RefCampaignBrowser.configure({ debug: false })
+    })
+
+    it('logs nothing on captureSession when debug is off (default)', () => {
+      const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+      RefCampaignBrowser.captureSession()
+      expect(logSpy).not.toHaveBeenCalledWith('[RefCampaign]', 'captureSession', expect.anything())
+      logSpy.mockRestore()
+    })
+
+    it('logs configuration and captureSession when debug is on', () => {
+      const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(null, { status: 204 })))
+
+      RefCampaignBrowser.configure({ debug: true })
+      RefCampaignBrowser.captureSession()
+
+      expect(logSpy).toHaveBeenCalledWith('[RefCampaign]', 'configured', expect.any(Object))
+      expect(logSpy).toHaveBeenCalledWith(
+        '[RefCampaign]',
+        'captureSession',
+        expect.objectContaining({ source: 'none' }),
+      )
+      logSpy.mockRestore()
     })
   })
 })

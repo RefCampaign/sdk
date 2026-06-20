@@ -15,7 +15,12 @@ export interface RefCampaignServerConfig {
   secretKey: string
   /** Base URL for RefCampaign API (default: https://app.refcampaign.com) */
   apiUrl?: string
-  /** Enable debug logging */
+  /**
+   * Enable debug logging. Also fires a one-shot `verify()` self-check on
+   * construction. Intended for development / integration setup — not for a
+   * production hot path, where per-instance construction would emit a ping
+   * each time.
+   */
   debug?: boolean
   /** Per-request timeout in ms (default: 10000) */
   timeoutMs?: number
@@ -101,6 +106,32 @@ export interface TrackConversionResponse {
   success: boolean
   conversionId?: string
   error?: string
+}
+
+/**
+ * Stripe Connect mode reported by the integration self-check.
+ */
+export type StripePingMode = 'live' | 'test' | 'unknown'
+
+/**
+ * Result of `RefCampaignServer.verify()` — an integration self-check against
+ * `GET /api/v1/ping`. `valid` is true when the secret key authenticated and
+ * the account state was returned. On any failure (bad key, network, offline)
+ * `valid` is false and `reason` explains why — `verify()` never throws.
+ */
+export interface PingResult {
+  valid: boolean
+  /** Failure explanation when `valid` is false. */
+  reason?: string
+  /** Merchant account name (present when valid). */
+  merchant?: string
+  /** Number of ACTIVE, non-test campaigns on the account. */
+  activeCampaigns?: number
+  /** Stripe Connect status. */
+  stripe?: {
+    connected: boolean
+    mode: StripePingMode
+  }
 }
 
 /**

@@ -30,7 +30,7 @@ function debounceKey(apiBase: string, siteToken?: string): string {
   return siteToken ? `${base}:${siteToken}` : base
 }
 
-export function sendInstallPing(apiBase: string, siteToken?: string): void {
+export function sendInstallPing(apiBase: string, siteToken?: string, debug = false): void {
   const key = debounceKey(apiBase, siteToken)
 
   try {
@@ -58,14 +58,18 @@ export function sendInstallPing(apiBase: string, siteToken?: string): void {
   fetch(`${apiBase}/api/sdk/installed`, init)
     .then((res) => {
       if (res.ok || res.status === 204) {
+        if (debug) console.log('[RefCampaign] Install ping acknowledged')
         try {
           localStorage.setItem(key, String(Date.now()))
         } catch {
           // localStorage write blocked — debounce is best-effort, accept re-fire
         }
+      } else if (debug) {
+        console.warn('[RefCampaign] Install ping rejected:', res.status, res.statusText)
       }
     })
-    .catch(() => {
-      // Network noise — silent
+    .catch((error) => {
+      // Network noise — silent unless the merchant opted into debug.
+      if (debug) console.warn('[RefCampaign] Install ping failed:', error)
     })
 }

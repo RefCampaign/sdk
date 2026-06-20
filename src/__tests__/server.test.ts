@@ -451,4 +451,67 @@ describe('RefCampaignServer', () => {
       expect(context).toEqual({ orderId: 'ORD-ERR', attempts: 1, operation: 'refund' })
     })
   })
+
+  describe('verify', () => {
+    beforeEach(() => {
+      global.fetch = vi.fn()
+    })
+
+    afterEach(() => {
+      vi.restoreAllMocks()
+    })
+
+    it('GETs /api/v1/ping with the Bearer key and returns the unwrapped payload', async () => {
+      ;(global.fetch as ReturnType<typeof vi.fn>).mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          success: true,
+          data: { valid: true, merchant: 'Acme', activeCampaigns: 2, stripe: { connected: true, mode: 'live' } },
+          meta: { timestamp: 'x' },
+        }),
+      })
+
+      const rc = new RefCampaignServer('rc_test_abcdefghij')
+      const result = await rc.verify()
+
+      expect(result).toEqual({
+        valid: true,
+        merchant: 'Acme',
+        activeCampaigns: 2,
+        stripe: { connected: true, mode: 'live' },
+      })
+      expect(global.fetch).toHaveBeenCalledWith(
+        'https://app.refcampaign.com/api/v1/ping',
+        expect.objectContaining({
+          method: 'GET',
+          headers: { Authorization: 'Bearer rc_test_abcdefghij' },
+        }),
+      )
+    })
+
+    it('returns { valid: false, reason } on a non-ok response and never throws', async () => {
+      ;(global.fetch as ReturnType<typeof vi.fn>).mockResolvedValue({
+        ok: false,
+        status: 401,
+        statusText: 'Unauthorized',
+        json: async () => ({}),
+      })
+
+      const rc = new RefCampaignServer('rc_test_abcdefghij')
+      const result = await rc.verify()
+
+      expect(result.valid).toBe(false)
+      expect(result.reason).toContain('401')
+    })
+
+    it('returns { valid: false, reason } on a network error and never throws', async () => {
+      ;(global.fetch as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('network down'))
+
+      const rc = new RefCampaignServer('rc_test_abcdefghij')
+      const result = await rc.verify()
+
+      expect(result).toEqual({ valid: false, reason: 'network down' })
+    })
+  })
 })

@@ -12,6 +12,7 @@ import type {
   TrackConversionResponse,
   RefundConversionData,
   RefundConversionResponse,
+  PingResult,
 } from './types'
 import {
   validateSecretKey,
@@ -58,6 +59,74 @@ export class RefCampaignServer {
         // Never log any part of the secret key, even in debug.
         secretKey: '***',
       })
+      // Fire-and-forget self-check so a misconfigured key surfaces in the
+      // console during integration. verify() never throws.
+      void this.verify()
+    }
+  }
+
+  /**
+   * Integration self-check: validates the secret key against
+   * `GET /api/v1/ping` and returns the account state (merchant name, active
+   * campaign count, Stripe Connect status). Call it once during setup to
+   * confirm the integration is wired correctly.
+   *
+   * Never throws — on a bad key, network error, or offline host it resolves
+   * to `{ valid: false, reason }`.
+   *
+   * @example
+   * const rc = new RefCampaignServer('rc_live_...')
+   * const check = await rc.verify()
+   * if (!check.valid) console.error('RefCampaign not reachable:', check.reason)
+   */
+  async verify(): Promise<PingResult> {
+    const timeoutMs = this.config.timeoutMs ?? 10000
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), timeoutMs)
+
+    try {
+      const response = await fetch(`${this.apiUrl}/api/v1/ping`, {
+        method: 'GET',
+        headers: { Authorization: `Bearer ${this.config.secretKey}` },
+        signal: controller.signal,
+      })
+
+      if (!response.ok) {
+        const reason = `${response.status} ${response.statusText}`
+        if (this.config.debug) {
+          console.error('[RefCampaign] Integration self-check failed:', reason)
+        }
+        return { valid: false, reason }
+      }
+
+      // The platform wraps every handler return in { success, data, meta }.
+      const parsed: { data?: Partial<PingResult> } & Partial<PingResult> =
+        await response.json()
+      const data = (parsed?.data ?? parsed) as Partial<PingResult>
+      const result: PingResult = {
+        valid: true,
+        merchant: data.merchant,
+        activeCampaigns: data.activeCampaigns,
+        stripe: data.stripe,
+      }
+
+      if (this.config.debug) {
+        console.log('[RefCampaign] Integration verified', {
+          merchant: result.merchant,
+          activeCampaigns: result.activeCampaigns,
+          stripe: result.stripe,
+        })
+      }
+
+      return result
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : 'Unknown error occurred'
+      if (this.config.debug) {
+        console.error('[RefCampaign] Integration self-check error:', reason)
+      }
+      return { valid: false, reason }
+    } finally {
+      clearTimeout(timer)
     }
   }
 

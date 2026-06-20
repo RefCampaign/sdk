@@ -18,11 +18,22 @@
  * const rc = new RefCampaignServer('rc_live_...')
  * const metadata = rc.getStripeMetadata(sessionId)
  *
+ * @example
+ * // Verify an inbound webhook (server-side)
+ * import { verifyWebhookSignature } from '@refcampaign/sdk'
+ *
+ * const ok = verifyWebhookSignature({ secret, payload: rawBody, header })
+ *
  * @packageDocumentation
  */
 
 export { RefCampaignBrowser } from './browser'
 export { RefCampaignServer } from './server'
+export {
+  verifyWebhookSignature,
+  WEBHOOK_SIGNATURE_HEADER,
+  WEBHOOK_EVENT_TYPES,
+} from './webhooks'
 
 export type {
   RefCampaignServerConfig,
@@ -31,6 +42,10 @@ export type {
   TrackConversionResponse,
   RefundConversionData,
   RefundConversionResponse,
+  PingResult,
+  StripePingMode,
   SessionCaptureResult,
   SessionIdSource,
 } from './types'
+
+export type { VerifyWebhookSignatureOptions, WebhookEventType } from './webhooks'
